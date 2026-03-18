@@ -1,0 +1,13 @@
+# Ignorar ficheros y carpetas específicos del entorno
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Ignorar la caché de herramientas de calidad
+.ruff_cache/
+
+# Ignorar la documentación generada automáticamente
+docs/
+

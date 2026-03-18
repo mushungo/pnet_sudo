@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Esquema para Agentes de Opencode",
+  "description": "Define la estructura y validación para los ficheros de configuración de agentes. Un agente es una configuración autocontenida de Opencode.",
+  "type": "object",
+  "properties": {
+    "nombre": {
+      "description": "Nombre único y legible del agente.",
+      "type": "string"
+    },
+    "descripcion": {
+      "description": "Una explicación clara de la función y objetivo principal del agente.",
+      "type": "string"
+    },
+    "prompt_base": {
+      "description": "El 'system prompt' o instrucción base que define el comportamiento central del agente.",
+      "type": "string"
+    },
+    "herramientas_habilitadas": {
+      "description": "Lista de identificadores de herramientas que el agente tiene permitido usar.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "personalidad": {
+      "description": "Define los rasgos de comportamiento del agente.",
+      "type": "object",
+      "properties": {
+        "tono": {
+          "description": "El tono de comunicación del agente.",
+          "type": "string",
+          "enum": [
+            "amable",
+            "profesional",
+            "creativo",
+            "conciso",
+            "directo",
+            "analítico",
+            "organizado"
+          ]
+        },
+        "verbosidad": {
+          "description": "Nivel de detalle en las respuestas (0.0 = mínimo, 1.0 = máximo).",
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      },
+      "required": [
+        "tono",
+        "verbosidad"
+      ]
+    }
+  },
+  "required": [
+    "nombre",
+    "descripcion",
+    "prompt_base"
+  ]
+}

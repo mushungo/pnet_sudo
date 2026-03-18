@@ -1,0 +1,7 @@
+pyodbc
+python-dotenv
+
+# --- Dependencias externas (no Python) ---
+# Engram (memoria persistente para agentes IA)
+#   Binario de Go. Descargar desde: https://github.com/Gentleman-Programming/engram/releases
+#   Colocar engram.exe en el PATH del sistema.

@@ -1,0 +1,10 @@
+{
+  "$schema": "../schemas/modificador.schema.json",
+  "nombre_modificador": "personalidad_creativa",
+  "tipo": "ajustar_personalidad",
+  "configuracion": {
+    "tono": "creativo",
+    "verbosidad": 0.9,
+    "nivel_de_iniciativa": "alto"
+  }
+}

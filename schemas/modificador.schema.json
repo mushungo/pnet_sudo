@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Esquema para Modificadores de Opencode",
+  "description": "Define la estructura y validación para los ficheros de modificadores de comportamiento. Un modificador altera una parte específica de la configuración de un agente.",
+  "type": "object",
+  "properties": {
+    "nombre_modificador": {
+      "description": "Nombre único y legible del modificador.",
+      "type": "string"
+    },
+    "tipo": {
+      "description": "El tipo de modificación a aplicar.",
+      "type": "string",
+      "enum": [
+        "reemplazar_prompt",
+        "modificar_herramientas",
+        "ajustar_personalidad"
+      ]
+    },
+    "configuracion": {
+      "description": "El objeto de configuración, cuya estructura depende del 'tipo' de modificador.",
+      "type": "object"
+    }
+  },
+  "required": [
+    "nombre_modificador",
+    "tipo",
+    "configuracion"
+  ],
+  "if": {
+    "properties": {
+      "tipo": {
+        "const": "ajustar_personalidad"
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "configuracion": {
+        "$ref": "#/definitions/personalidadSchema"
+      }
+    }
+  },
+  "definitions": {
+    "personalidadSchema": {
+      "type": "object",
+      "properties": {
+        "tono": {
+          "type": "string",
+          "enum": [
+            "amable",
+            "profesional",
+            "creativo",
+            "conciso",
+            "directo",
+            "analítico",
+            "organizado"
+          ]
+        },
+        "verbosidad": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "nivel_de_iniciativa": {
+          "type": "string",
+          "enum": [
+            "bajo",
+            "medio",
+            "alto"
+          ]
+        }
+      }
+    }
+  }
+}

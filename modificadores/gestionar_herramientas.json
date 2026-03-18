@@ -1,0 +1,13 @@
+{
+  "$schema": "../schemas/modificador.schema.json",
+  "nombre_modificador": "modo_seguro_solo_lectura",
+  "tipo": "modificar_herramientas",
+  "configuracion": {
+    "agregar": [],
+    "quitar": [
+      "write",
+      "edit",
+      "bash"
+    ]
+  }
+}

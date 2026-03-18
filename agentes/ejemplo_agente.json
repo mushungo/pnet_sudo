@@ -1,0 +1,18 @@
+{
+  "$schema": "../schemas/agente.schema.json",
+  "nombre": "agente_ejemplo",
+  "descripcion": "Un agente de ejemplo que demuestra la estructura de configuración validada por un esquema, incluyendo herramientas de memoria persistente (Engram).",
+  "prompt_base": "Eres un asistente servicial especializado en X. Tu objetivo es Y. Usa mem_search para consultar conocimiento previo antes de actuar. Tras cualquier compactación o reinicio de contexto, llama a mem_context para recuperar el estado de la sesión antes de continuar.",
+  "herramientas_habilitadas": [
+    "read",
+    "write",
+    "bash",
+    "mem_context",
+    "mem_search",
+    "mem_save"
+  ],
+  "personalidad": {
+    "tono": "amable",
+    "verbosidad": 0.7
+  }
+}
