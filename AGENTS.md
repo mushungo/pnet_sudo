@@ -2,6 +2,73 @@
 
 This document provides guidelines for agentic coding agents working in this repository.
 
+## Inicio de Sesión (EJECUTAR SIEMPRE AL COMENZAR)
+
+**Al iniciar una nueva sesión, el agente DEBE ejecutar estos pasos antes de hacer cualquier otra cosa:**
+
+1.  **Recuperar contexto de Engram:** Llamar a `mem_context(project="pnet_sudo")` para obtener el estado de sesiones anteriores, descubrimientos y decisiones previas.
+2.  **Registrar inicio de sesión:** Llamar a `mem_session_start(id="session-<FECHA>-<TEMA>", project="pnet_sudo")` con un ID descriptivo.
+3.  **Presentar un resumen breve** al usuario con lo recuperado: qué se hizo antes, qué quedó pendiente, y en qué punto está el proyecto.
+
+### Contexto del Proyecto
+
+**pnet_sudo** es un toolkit de introspección de metadatos de PeopleNet con agentes de IA, skills y herramientas Python. Los subsistemas principales son:
+
+| Subsistema | Directorio | Descripción |
+|---|---|---|
+| **BDL** | `tools/bdl/` | Herramientas para la Business Data Layer (list, get, build dictionary) |
+| **M4Object** | `tools/m4object/` | Herramientas para canales/m4objects (list, get, build dictionary) |
+| **LN4 LSP** | `ln4_lsp/` | Language Server Protocol para el lenguaje LN4 de PeopleNet |
+| **VS Code Extension** | `vscode-ln4/` | Extensión VS Code con syntax highlighting y cliente LSP |
+| **Skills** | `skills/` | Skills documentales para agentes (Markdown con YAML frontmatter) |
+| **Agentes** | `agentes/` | Definiciones de agentes especializados |
+| **General** | `tools/general/` | Utilidades compartidas (db_utils.py) |
+
+### LN4 LSP — Estado Actual
+
+El LSP para LN4 está **completo en 6 fases**:
+
+| Fase | Descripción | Directorio/Archivos clave |
+|---|---|---|
+| 1 | Gramática ANTLR4 + Parser | `ln4_lsp/grammar/LN4.g4`, `ln4_lsp/generated/` |
+| 2 | Servidor LSP (pygls, STDIO/TCP) | `ln4_lsp/server.py`, `ln4_lsp/__main__.py` |
+| 3 | Diagnósticos semánticos | `ln4_lsp/semantic.py`, `ln4_lsp/ln4_builtins.py` |
+| 4 | Autocompletado + Hover | `ln4_lsp/completion.py` |
+| 5 | Go-to-definition | `ln4_lsp/symbol_index.py`, `ln4_lsp/db_resolver.py`, `ln4_lsp/definition.py` |
+| 6 | Extensión VS Code | `vscode-ln4/` (package.json, extension.ts, tmLanguage, etc.) |
+
+**Cómo ejecutar el LSP:**
+```bash
+python -m ln4_lsp          # STDIO (modo normal para editores)
+python -m ln4_lsp --tcp    # TCP (para desarrollo/debug)
+```
+
+**Cómo ejecutar los tests:**
+```bash
+python -m ln4_lsp.tests.test_parser        # 13 samples
+python -m ln4_lsp.tests.test_semantic       # 23 tests
+python -m ln4_lsp.tests.test_completion     # 26 tests
+python -m ln4_lsp.tests.test_symbol_index   # 21 tests
+python -m ln4_lsp.tests.test_definition     # 16 tests
+python -m ln4_lsp.tests.test_db_resolver    # 14 tests (requiere DB)
+python -m ln4_lsp.tests.test_server         # 4 integration tests
+python -m ln4_lsp.tests.test_lsp_integration # 4 end-to-end tests
+```
+
+**Regenerar parser ANTLR4** (requiere Java 11):
+```bash
+"C:\java\jdk-11.0.26.4-hotspot\bin\java.exe" -jar "ln4_lsp/grammar/antlr-4.13.2-complete.jar" -Dlanguage=Python3 -visitor -o "ln4_lsp/generated" "ln4_lsp/grammar/LN4.g4"
+```
+
+**Empaquetar extensión VS Code:**
+```bash
+cd vscode-ln4 && npm install && npx @vscode/vsce package --allow-missing-repository
+```
+
+### Conexión a Base de Datos
+
+Las herramientas de `tools/` y el `db_resolver.py` del LSP se conectan a SQL Server mediante `tools/general/db_utils.py`. La configuración de conexión se lee de `.env` (no committeado). Sin DB disponible, los tests de DB se auto-saltan y el DBResolver devuelve `None` gracefully.
+
 ## Build, Lint, and Test Commands
 
 This project does not have a conventional build, lint, or test process. It is a collection of Python scripts, JSON files, and Markdown documents.
@@ -17,7 +84,7 @@ python tools/bdl/build_bdl_dictionary.py
 
 ### Testing
 
-There are no automated tests in this project. When modifying a script, you should manually test it to ensure it works as expected.
+Las herramientas Python en `tools/` no tienen tests automatizados. Para el **LN4 LSP** sí hay 8 suites de tests (ver sección "LN4 LSP — Estado Actual" arriba). Al modificar código del LSP, ejecutar los tests relevantes para verificar que no hay regresiones.
 
 ### Linting
 
