@@ -1,0 +1,2 @@
+' Muestra 13: Inline If con colon como separator
+If y >= 4 Then messagebox("", "Pago 0") : Return(0)

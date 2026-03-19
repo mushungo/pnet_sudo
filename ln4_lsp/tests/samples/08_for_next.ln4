@@ -1,0 +1,12 @@
+' Muestra 08: For/Next con TI.ITEM cross-access
+sBaseTable = SRTC_PY_VT_CONFIGURATION.ID_VALUE_TABLE_OBJECT
+sFrom = "FROM &" + sBaseTable + " " + sBaseTable
+
+For i = 0 To SRTC_PY_VT_CONF_FIELDS.Count() - 1
+    SRTC_PY_VT_CONF_FIELDS.Moveto(i)
+    sJoinTable = SRTC_PY_VT_CONF_FIELDS.N_FIELD_OBJECT
+    If Strin(sFrom, sJoinTable) = M4_ERROR Then
+        sFrom = sFrom + ", " + sJoinTable + " " + sJoinTable
+    Endif
+Next
+Return(sFrom)

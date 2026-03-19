@@ -1,0 +1,2 @@
+' Muestra 06: If single-line
+If DT_END = NullValue() Then DT_END = PLUS_INF

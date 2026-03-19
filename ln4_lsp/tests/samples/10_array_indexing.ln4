@@ -1,0 +1,21 @@
+' Muestra 10: Array indexing y nested For loops
+CRCO_LISTA_COMPETENCIAS.CCO_LOAD()
+
+For i = 0 To CRCO_EVALUADORES_CMP.Count() - 1
+
+    MsIdEvaluator = CRCO_EVALUADORES_CMP[i].SCO_ID_EVALUATOR
+    MnOrEvaluator = CRCO_EVALUADORES_CMP[i].SCO_OR_EVALUATOR
+
+    For j = 0 To CRCO_LISTA_COMPETENCIAS.Count() - 1
+        CRCO_LISTA_COMPETENCIAS.MoveTo(j)
+        For z = 0 To CRCO_LISTA_PREGUNTAS.Count() - 1
+            CRCO_LISTA_PREGUNTAS.MoveTo(z)
+            MsQuestion = CRCO_LISTA_PREGUNTAS.CCO_ID_QUESTION
+            MsComp = CRCO_LISTA_PREGUNTAS.SCO_ID_EXTD_KN
+            MnQualif = ToInt(Rnd(5))
+            CCO_EVAL360_API!CCO_EVAL360_MAIN.CCO_ADD_EVAL_ANSWER_SSE(MiOrdinal, MsIdEvaluator, MnOrEvaluator, MsComp, MsQuestion, MsIdNivelSalarial, MnQualif, MsComment)
+        Next
+    Next
+    CCO_EVAL360_API!CCO_EVAL360_MAIN.CCO_MAIN_SEND_EVAL_ANSWERS(MiOrdinal, MsIdEvaluator, MnOrEvaluator)
+
+Next

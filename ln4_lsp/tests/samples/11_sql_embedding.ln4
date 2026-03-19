@@ -1,0 +1,13 @@
+' Muestra 11: SQL embedding con SYS_SENTENCE
+CCO_AUX_SQL.DESTROY()
+sSelect = "SELECT @S1 = A.ID_CURRENCY_USD "
+sFrom = "FROM &SSE_GASTOS_MEDICOS_DET A "
+sWhere = "WHERE A.ORDINAL = ?(6,10,0)"
+sSQL = sSelect + sFrom + sWhere
+CCO_AUX_SQL.EXECUTESQL = sSQL
+CCO_AUX_SQL.EXECUTESQL(ORDINAL)
+If CCO_AUX_SQL.Begin() = M4_TRUE Then
+    PR_DIVISA = CCO_AUX_SQL.S1
+Else
+    PR_DIVISA = "USD"
+EndIf

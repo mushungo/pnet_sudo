@@ -1,0 +1,12 @@
+' Muestra 05: If multi-linea con ElseIf
+MsParam = ID_PARAM_ARG
+
+If MsParam="SHCO_PY_MT_WLOCATION" Then
+    MvValor="FROM &STD_WORK_LOCATION A, STD_LU_WL_TYPE B WHERE A.ID_ORGANIZATION = B.ID_ORGANIZATION AND A.STD_ID_WL_TYPE = B.STD_ID_WL_TYPE "
+ElseIf MsParam="STD_N_WL_TYPE" Then
+    MvValor="B"
+ElseIf MsParam = "TR" Then
+    MvValor = "1"
+EndIf
+
+Return(MvValor)

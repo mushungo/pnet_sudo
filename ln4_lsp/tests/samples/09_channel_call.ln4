@@ -1,0 +1,7 @@
+' Muestra 09: Channel cross-reference con ! y array indexing
+MsTemplateNM = "PLANTILLA_VAR_TOPES_EXAMENES"
+sTemplPath = ""
+
+SRTC_SUPFILES_ENGINE!SRTC_SUPFILES_ENGINE.GET_TEMPLATE(MsTemplateNM, sTemplPath)
+EXCEL!EXCEL.StartExcel()
+EXCEL!EXCEL_WORKBOOKS.OpenWorkbook(sTemplPath)

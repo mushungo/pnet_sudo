@@ -1,0 +1,15 @@
+' Muestra 07: While/Wend con member access
+i = 0
+
+While i < Count()
+   MoveTo(i)
+   If IsNull(SCO_REG_STATE) = True Then
+      DestroyRegister()
+   Elseif SCO_REG_STATE = 0 Then
+      UndoRegister()
+      i = i + 1
+   Elseif SCO_REG_STATE = 1 Then
+      InsertRegister()
+      i = i + 1
+   EndIf
+Wend

@@ -1,0 +1,11 @@
+' Muestra 12: C-style comments y Return sin valor
+// This method checks if the interview date is greater than the applicant start date
+
+SCO_MT_APP_INTERVIEW.Begin()
+WHILE SCO_MT_APP_INTERVIEW.IsEOF() = 0
+    If SCO_MT_APP_INTERVIEW.SCO_DT_START_APP > SCO_DT_APPOINTMENT THEN
+        SetLog(-1, 17, 111, 118, Format(SCO_OR_INTERVIEW, 0), SCO_MT_APP_INTERVIEW.SCO_ID_APP)
+        EndTransaction(ROLLBACK)
+    ENDIF
+    SCO_MT_APP_INTERVIEW.NEXT_REC()
+WEND

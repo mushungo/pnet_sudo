@@ -1,0 +1,8 @@
+# ln4_lsp — LN4 Language Server Protocol implementation
+# Requirements for Phase 1: Grammar + Parser
+
+# ANTLR4 Python runtime (must match the generator version)
+antlr4-python3-runtime==4.13.2
+
+# ANTLR4 tools (optional, for development convenience)
+antlr4-tools
