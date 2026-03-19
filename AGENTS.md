@@ -16,8 +16,11 @@ This document provides guidelines for agentic coding agents working in this repo
 
 | Subsistema | Directorio | Descripción |
 |---|---|---|
-| **BDL** | `tools/bdl/` | Herramientas para la Business Data Layer (list, get, build dictionary) |
-| **M4Object** | `tools/m4object/` | Herramientas para canales/m4objects (list, get, build dictionary) |
+| **BDL** | `tools/bdl/` | Herramientas para la Business Data Layer (list, get, build dictionary) + Physical Layer |
+| **M4Object** | `tools/m4object/` | Herramientas para canales/m4objects (list, get, build dictionary) + Conectores |
+| **Sentences** | `tools/sentences/` | Herramientas para sentences (definiciones de acceso a datos SQL-like) |
+| **Dependencies** | `tools/dependencies/` | Análisis de impacto y trazado de dependencias entre items |
+| **Security** | `tools/security/` | Herramientas para usuarios, roles y permisos de aplicación |
 | **LN4 LSP** | `ln4_lsp/` | Language Server Protocol para el lenguaje LN4 de PeopleNet |
 | **VS Code Extension** | `vscode-ln4/` | Extensión VS Code con syntax highlighting y cliente LSP |
 | **Skills** | `skills/` | Skills documentales para agentes (Markdown con YAML frontmatter) |
