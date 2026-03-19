@@ -1,13 +1,15 @@
 # =============================================================================
 # ln4_lsp/server.py — Servidor LSP para el lenguaje LN4 de PeopleNet
 # =============================================================================
-# Fase 3 del LSP: servidor con diagnósticos sintácticos y semánticos.
+# Fase 4 del LSP: servidor con diagnósticos, autocompletado y hover.
 #   - Sincronización de documentos (open/change/close)
 #   - Parsing con gramática ANTLR4 en cada cambio
 #   - Publicación de diagnósticos:
 #       * Errores de sintaxis (ANTLR4 error listener)
 #       * Funciones desconocidas (warning) — validadas contra catálogo de 301 built-ins
 #       * Aridad incorrecta (error) — min/max args + argumentos variables
+#   - Autocompletado: 301 funciones built-in + keywords + constantes
+#   - Hover: documentación de funciones, constantes y keywords
 #
 # Uso:
 #   python -m ln4_lsp             # STDIO (para editores)
@@ -33,6 +35,7 @@ if project_root not in sys.path:
 from ln4_lsp.generated.LN4Lexer import LN4Lexer
 from ln4_lsp.generated.LN4Parser import LN4Parser
 from ln4_lsp.semantic import analyze_semantics, SEVERITY_ERROR, SEVERITY_WARNING, SEVERITY_INFO
+from ln4_lsp.completion import get_completion_items, get_hover_for_word
 
 logger = logging.getLogger("ln4-lsp")
 
@@ -167,11 +170,11 @@ def semantic_to_diagnostics(semantic_diags):
 class LN4LanguageServer(LanguageServer):
     """Servidor LSP para el lenguaje LN4 de PeopleNet.
 
-    Fase 3: sincronización de documentos, diagnósticos de sintaxis y semánticos.
+    Fase 4: diagnósticos de sintaxis y semánticos, autocompletado y hover.
     """
 
     def __init__(self):
-        super().__init__("ln4-language-server", "v0.3.0")
+        super().__init__("ln4-language-server", "v0.4.0")
 
     def parse_and_publish(self, uri):
         """Parsea un documento y publica los diagnósticos al cliente.
@@ -282,3 +285,44 @@ def did_save(ls: LN4LanguageServer, params: types.DidSaveTextDocumentParams):
     """Re-parsea en cada guardado (por si el cliente no envía didChange)."""
     logger.info("Documento guardado: %s", params.text_document.uri)
     ls.parse_and_publish(params.text_document.uri)
+
+
+# =============================================================================
+# Handlers LSP — Autocompletado
+# =============================================================================
+
+@server.feature(
+    types.TEXT_DOCUMENT_COMPLETION,
+    types.CompletionOptions(trigger_characters=[".", "!", "#", "@"]),
+)
+def completion(
+    ls: LN4LanguageServer, params: types.CompletionParams
+) -> types.CompletionList:
+    """Proporciona autocompletado para funciones built-in, keywords y constantes."""
+    items = get_completion_items()
+    return types.CompletionList(is_incomplete=False, items=items)
+
+
+# =============================================================================
+# Handlers LSP — Hover
+# =============================================================================
+
+@server.feature(types.TEXT_DOCUMENT_HOVER)
+def hover(
+    ls: LN4LanguageServer, params: types.HoverParams
+) -> types.Hover | None:
+    """Muestra documentación al pasar el cursor sobre un identificador."""
+    try:
+        doc = ls.workspace.get_text_document(params.text_document.uri)
+        word = doc.word_at_position(params.position)
+    except Exception as e:
+        logger.error("Error obteniendo palabra en hover: %s", e)
+        return None
+
+    if not word:
+        return None
+
+    result = get_hover_for_word(word)
+    if result:
+        logger.debug("Hover para '%s': encontrado", word)
+    return result

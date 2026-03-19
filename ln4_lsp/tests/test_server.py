@@ -112,7 +112,7 @@ def test_server_initialization():
     """Verifica que el servidor se puede crear correctamente."""
     ls = LN4LanguageServer()
     assert ls.name == "ln4-language-server"
-    assert ls.version == "v0.3.0"
+    assert ls.version == "v0.4.0"
     return True
 
 
