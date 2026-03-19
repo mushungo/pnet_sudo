@@ -15,7 +15,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from tools.general.db_utils import db_connection
+from tools.general.db_utils import db_connection, safe_filename
 
 
 def fetch_all_metadata(conn):
@@ -141,7 +141,8 @@ def build_dictionary():
             for i, mod_id in enumerate(mod_list):
                 markdown_content = generate_markdown(mod_id, all_meta)
 
-                with open(os.path.join(base_path, f"{mod_id}.md"), "w", encoding="utf-8") as f:
+                safe_name = safe_filename(mod_id)
+                with open(os.path.join(base_path, f"{safe_name}.md"), "w", encoding="utf-8") as f:
                     f.write(markdown_content)
 
                 mod = modules[mod_id]
@@ -149,9 +150,9 @@ def build_dictionary():
                 obj_count = len(module_objects.get(mod_id, []))
                 rel_count = len(module_relations.get(mod_id, []))
                 index_entries.append(
-                    f"| [`{mod_id}`]({mod_id}.md) | {name or ''} | {obj_count} | {rel_count} | {mod.OWNER_FLAG or ''} |"
+                    f"| [`{mod_id}`]({safe_name}.md) | {name or ''} | {obj_count} | {rel_count} | {mod.OWNER_FLAG or ''} |"
                 )
-                print(f"  ({i+1}/{len(mod_list)}) -> Creado '{mod_id}.md'")
+                print(f"  ({i+1}/{len(mod_list)}) -> Creado '{safe_name}.md'")
 
     except Exception as e:
         print(f"\nError durante la generación: {e}", file=sys.stderr)

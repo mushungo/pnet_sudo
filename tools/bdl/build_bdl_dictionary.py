@@ -15,7 +15,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from tools.general.db_utils import db_connection
+from tools.general.db_utils import db_connection, safe_filename
 
 
 def fetch_all_metadata(conn):
@@ -71,8 +71,8 @@ def generate_markdown(obj_id, all_meta):
         md.append("| Clave | Pos | ID del Campo | Tipo Extendido | No Nulo | Descripción (Lookup) |")
         md.append("|---|---|---|---|---|---|")
         for field in obj_fields:
-            safe_type_filename = field.ID_TYPE.replace("/", "_").replace("\\", "_")
-            type_link = f"[`{field.ID_TYPE}`](../extended_types/{safe_type_filename}.md)"
+            safe_type_name = safe_filename(field.ID_TYPE)
+            type_link = f"[`{field.ID_TYPE}`](../extended_types/{safe_type_name}.md)"
             field_desc = field.ID_TRANS_FLDESP or field.ID_TRANS_FLDENG or ""
 
             if (obj_id, field.ID_FIELD) in lookup_map:
@@ -136,15 +136,16 @@ def build_dictionary():
             for i, obj_id in enumerate(object_list):
                 markdown_content = generate_markdown(obj_id, all_meta)
 
-                with open(os.path.join(base_path, f"{obj_id}.md"), "w", encoding="utf-8") as f:
+                safe_name = safe_filename(obj_id)
+                with open(os.path.join(base_path, f"{safe_name}.md"), "w", encoding="utf-8") as f:
                     f.write(markdown_content)
 
                 obj_details = all_objects[obj_id]
                 description = obj_details.ID_TRANS_OBJESP or obj_details.ID_TRANS_OBJENG
                 index_entries.append(
-                    f"| [`{obj_id}`]({obj_id}.md) | {description or ''} | `{obj_details.REAL_NAME or ''}` |"
+                    f"| [`{obj_id}`]({safe_name}.md) | {description or ''} | `{obj_details.REAL_NAME or ''}` |"
                 )
-                print(f"  ({i+1}/{len(object_list)}) -> Creado '{obj_id}.md'")
+                print(f"  ({i+1}/{len(object_list)}) -> Creado '{safe_name}.md'")
 
     except Exception as e:
         print(f"\nError durante la generación: {e}", file=sys.stderr)

@@ -8,6 +8,8 @@ cd
 echo --------------------------------------------------
 echo.
 
+Path=%~dp0.engram;%PATH%
+
 REM Inicia el servidor HTTP de Engram (memoria persistente) en segundo plano.
 REM Requiere que engram.exe esté en el PATH del sistema.
 echo Iniciando servidor Engram (memoria persistente)...

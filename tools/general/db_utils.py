@@ -6,6 +6,7 @@ Proporciona funciones para crear conexiones a la BD de PeopleNet
 usando las credenciales definidas en el fichero .env del proyecto.
 """
 import os
+import re
 from contextlib import contextmanager
 
 import pyodbc
@@ -64,3 +65,18 @@ def db_connection():
         yield conn
     finally:
         conn.close()
+
+
+def safe_filename(name):
+    """Sanitiza un nombre para usarlo como nombre de fichero en Windows.
+
+    Reemplaza caracteres no válidos en Windows (/ \\ : * ? \" < > |)
+    y espacios por guiones bajos.
+
+    Args:
+        name: Nombre a sanitizar.
+
+    Returns:
+        str: Nombre seguro para usar como fichero.
+    """
+    return re.sub(r'[/\\:*?"<>|\s]+', "_", name)

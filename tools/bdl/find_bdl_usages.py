@@ -33,7 +33,9 @@ def find_bdl_object_usages(id_object):
             if not rows:
                 return {"bdl_object_searched": id_object, "message": "No utilizado.", "usages": []}
 
-            m4object_usages = defaultdict(lambda: {"description": "", "nodes": defaultdict(list)})
+            m4object_descriptions = {}
+            m4object_nodes = defaultdict(lambda: defaultdict(list))
+
             for row in rows:
                 usage_type = []
                 if row.ID_READ_OBJECT == id_object:
@@ -42,8 +44,8 @@ def find_bdl_object_usages(id_object):
                     usage_type.append("write")
                 field_used = row.ID_READ_FIELD if row.ID_READ_OBJECT == id_object else row.ID_WRITE_FIELD
 
-                m4object_usages[row.ID_TI]["description"] = row.N_T3ESP or row.N_T3ENG
-                m4object_usages[row.ID_TI]["nodes"][row.ID_NODE].append({
+                m4object_descriptions[row.ID_TI] = row.N_T3ESP or row.N_T3ENG
+                m4object_nodes[row.ID_TI][row.ID_NODE].append({
                     "item": row.ID_ITEM,
                     "field_used": field_used,
                     "usage_type": ", ".join(usage_type)
@@ -52,15 +54,15 @@ def find_bdl_object_usages(id_object):
             output_usages = [
                 {
                     "m4object_ti": ti,
-                    "description": data["description"],
+                    "description": m4object_descriptions.get(ti, ""),
                     "nodes": [
                         {"node_id": node, "items": items}
-                        for node, items in data["nodes"].items()
+                        for node, items in m4object_nodes[ti].items()
                     ]
                 }
-                for ti, data in m4object_usages.items()
+                for ti in m4object_descriptions
             ]
-            return {"bdl_object_searched": id_object, "usages": output_usages}
+            return {"status": "success", "bdl_object_searched": id_object, "usages": output_usages}
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
