@@ -1,7 +1,7 @@
 # =============================================================================
 # ln4_lsp/server.py — Servidor LSP para el lenguaje LN4 de PeopleNet
 # =============================================================================
-# Fase 4 del LSP: servidor con diagnósticos, autocompletado y hover.
+# Fase 5 del LSP: servidor con diagnósticos, autocompletado, hover y go-to-definition.
 #   - Sincronización de documentos (open/change/close)
 #   - Parsing con gramática ANTLR4 en cada cambio
 #   - Publicación de diagnósticos:
@@ -10,6 +10,7 @@
 #       * Aridad incorrecta (error) — min/max args + argumentos variables
 #   - Autocompletado: 301 funciones built-in + keywords + constantes
 #   - Hover: documentación de funciones, constantes y keywords
+#   - Go-to-definition: variables locales (Tier 1) + TI/items/canales via BD (Tier 2)
 #
 # Uso:
 #   python -m ln4_lsp             # STDIO (para editores)
@@ -36,6 +37,7 @@ from ln4_lsp.generated.LN4Lexer import LN4Lexer
 from ln4_lsp.generated.LN4Parser import LN4Parser
 from ln4_lsp.semantic import analyze_semantics, SEVERITY_ERROR, SEVERITY_WARNING, SEVERITY_INFO
 from ln4_lsp.completion import get_completion_items, get_hover_for_word
+from ln4_lsp.definition import resolve_definition
 
 logger = logging.getLogger("ln4-lsp")
 
@@ -170,11 +172,13 @@ def semantic_to_diagnostics(semantic_diags):
 class LN4LanguageServer(LanguageServer):
     """Servidor LSP para el lenguaje LN4 de PeopleNet.
 
-    Fase 4: diagnósticos de sintaxis y semánticos, autocompletado y hover.
+    Fase 5: diagnósticos de sintaxis y semánticos, autocompletado, hover y go-to-definition.
     """
 
     def __init__(self):
-        super().__init__("ln4-language-server", "v0.4.0")
+        super().__init__("ln4-language-server", "v0.5.0")
+        # Cache de parse trees por URI (para go-to-definition sin re-parsear)
+        self._parse_trees = {}
 
     def parse_and_publish(self, uri):
         """Parsea un documento y publica los diagnósticos al cliente.
@@ -203,6 +207,13 @@ class LN4LanguageServer(LanguageServer):
             errors, tree = parse_ln4_source(source)
             syntax_diags = errors_to_diagnostics(errors)
             diagnostics.extend(syntax_diags)
+
+            # Cachear el parse tree para go-to-definition
+            if not errors and tree is not None:
+                self._parse_trees[uri] = tree
+            elif uri in self._parse_trees:
+                # Mantener el último tree válido si hay errores
+                pass
 
             # Fase 2: análisis semántico — solo si no hay errores de sintaxis
             if not errors and tree is not None:
@@ -270,8 +281,10 @@ def did_change(ls: LN4LanguageServer, params: types.DidChangeTextDocumentParams)
 
 @server.feature(types.TEXT_DOCUMENT_DID_CLOSE)
 def did_close(ls: LN4LanguageServer, params: types.DidCloseTextDocumentParams):
-    """Limpia diagnósticos cuando se cierra el documento."""
+    """Limpia diagnósticos y cache cuando se cierra el documento."""
     logger.info("Documento cerrado: %s", params.text_document.uri)
+    # Limpiar cache de parse tree
+    ls._parse_trees.pop(params.text_document.uri, None)
     ls.text_document_publish_diagnostics(
         types.PublishDiagnosticsParams(
             uri=params.text_document.uri,
@@ -326,3 +339,65 @@ def hover(
     if result:
         logger.debug("Hover para '%s': encontrado", word)
     return result
+
+
+# =============================================================================
+# Handlers LSP — Go-to-definition
+# =============================================================================
+
+@server.feature(types.TEXT_DOCUMENT_DEFINITION)
+def definition(
+    ls: LN4LanguageServer, params: types.DefinitionParams
+) -> types.Location | None:
+    """Resuelve go-to-definition para el símbolo bajo el cursor.
+
+    Tier 1: definiciones locales (variables, for vars) dentro del documento.
+    Tier 2: resolución contra la BD (TI items, canales, métodos).
+    """
+    uri = params.text_document.uri
+
+    try:
+        doc = ls.workspace.get_text_document(uri)
+        source = doc.source
+    except Exception as e:
+        logger.error("Error obteniendo documento para definition: %s", e)
+        return None
+
+    # Obtener el parse tree (del cache o re-parsear)
+    tree = ls._parse_trees.get(uri)
+    if tree is None:
+        try:
+            errors, tree = parse_ln4_source(source)
+            if not errors and tree is not None:
+                ls._parse_trees[uri] = tree
+        except Exception as e:
+            logger.error("Error al parsear para definition: %s", e)
+            return None
+
+    if tree is None:
+        return None
+
+    # Convertir posición LSP (0-indexed) a ANTLR4 (1-indexed line, 0-indexed col)
+    antlr_line = params.position.line + 1
+    antlr_col = params.position.character
+
+    result = resolve_definition(tree, source, antlr_line, antlr_col, uri)
+
+    if result is None:
+        logger.debug("Definition: no se pudo resolver en %d:%d", antlr_line, antlr_col)
+        return None
+
+    logger.debug(
+        "Definition: %s → %s (%d:%d)",
+        result.kind, result.tooltip or "?", result.line, result.column,
+    )
+
+    # Construir Location para el cliente
+    target_uri = result.uri or uri
+    return types.Location(
+        uri=target_uri,
+        range=types.Range(
+            start=types.Position(line=result.line, character=result.column),
+            end=types.Position(line=result.end_line, character=result.end_column),
+        ),
+    )
