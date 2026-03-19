@@ -1,7 +1,8 @@
 # =============================================================================
 # ln4_lsp/server.py — Servidor LSP para el lenguaje LN4 de PeopleNet
 # =============================================================================
-# Fase 5 del LSP: servidor con diagnósticos, autocompletado, hover y go-to-definition.
+# Fase 5+ del LSP: servidor con diagnósticos, autocompletado, hover,
+# go-to-definition y signature help.
 #   - Sincronización de documentos (open/change/close)
 #   - Parsing con gramática ANTLR4 en cada cambio
 #   - Publicación de diagnósticos:
@@ -9,8 +10,9 @@
 #       * Funciones desconocidas (warning) — validadas contra catálogo de 301 built-ins
 #       * Aridad incorrecta (error) — min/max args + argumentos variables
 #   - Autocompletado: 301 funciones built-in + keywords + constantes
-#   - Hover: documentación de funciones, constantes y keywords
+#   - Hover: documentación de funciones, constantes, keywords y TI items (BD)
 #   - Go-to-definition: variables locales (Tier 1) + TI/items/canales via BD (Tier 2)
+#   - Signature help: firmas de funciones built-in y métodos de TI (BD)
 #
 # Uso:
 #   python -m ln4_lsp             # STDIO (para editores)
@@ -36,8 +38,9 @@ if project_root not in sys.path:
 from ln4_lsp.generated.LN4Lexer import LN4Lexer
 from ln4_lsp.generated.LN4Parser import LN4Parser
 from ln4_lsp.semantic import analyze_semantics, SEVERITY_ERROR, SEVERITY_WARNING, SEVERITY_INFO
-from ln4_lsp.completion import get_completion_items, get_hover_for_word
+from ln4_lsp.completion import get_completion_items, get_hover_for_word, get_hover_for_item
 from ln4_lsp.definition import resolve_definition
+from ln4_lsp.signature_help import get_signature_help
 
 logger = logging.getLogger("ln4-lsp")
 
@@ -172,11 +175,12 @@ def semantic_to_diagnostics(semantic_diags):
 class LN4LanguageServer(LanguageServer):
     """Servidor LSP para el lenguaje LN4 de PeopleNet.
 
-    Fase 5: diagnósticos de sintaxis y semánticos, autocompletado, hover y go-to-definition.
+    Fase 5+: diagnósticos de sintaxis y semánticos, autocompletado, hover,
+    go-to-definition y signature help.
     """
 
     def __init__(self):
-        super().__init__("ln4-language-server", "v0.5.0")
+        super().__init__("ln4-language-server", "v0.6.0")
         # Cache de parse trees por URI (para go-to-definition sin re-parsear)
         self._parse_trees = {}
 
@@ -324,7 +328,12 @@ def completion(
 def hover(
     ls: LN4LanguageServer, params: types.HoverParams
 ) -> types.Hover | None:
-    """Muestra documentación al pasar el cursor sobre un identificador."""
+    """Muestra documentación al pasar el cursor sobre un identificador.
+
+    Prioridad:
+      1. Funciones built-in, constantes, keywords (catálogo local)
+      2. TI items con argumentos (BD, M4RCH_ITEMS + M4RCH_ITEM_ARGS)
+    """
     try:
         doc = ls.workspace.get_text_document(params.text_document.uri)
         word = doc.word_at_position(params.position)
@@ -335,9 +344,33 @@ def hover(
     if not word:
         return None
 
+    # 1. Built-in functions, constants, keywords
     result = get_hover_for_word(word)
     if result:
-        logger.debug("Hover para '%s': encontrado", word)
+        logger.debug("Hover para '%s': built-in encontrado", word)
+        return result
+
+    # 2. TI item hover (buscar patrón TI.ITEM en la línea)
+    try:
+        line_text = doc.source.split("\n")[params.position.line]
+        col = params.position.character
+        # Buscar hacia atrás si hay un '.' antes de la palabra actual
+        import re
+        # Patrón: IDENTIFIER.word donde word está en la posición del cursor
+        # Buscamos: "TI_NAME." justo antes de la posición donde empieza 'word'
+        word_start = line_text.rfind(word, 0, col + len(word))
+        if word_start > 0:
+            before = line_text[:word_start]
+            ti_match = re.search(r'(\w+)\.\s*$', before)
+            if ti_match:
+                ti_name = ti_match.group(1)
+                item_result = get_hover_for_item(ti_name, word)
+                if item_result:
+                    logger.debug("Hover para '%s.%s': DB item encontrado", ti_name, word)
+                    return item_result
+    except Exception as e:
+        logger.debug("Error en hover DB para '%s': %s", word, e)
+
     return result
 
 
@@ -401,3 +434,38 @@ def definition(
             end=types.Position(line=result.end_line, character=result.end_column),
         ),
     )
+
+
+# =============================================================================
+# Handlers LSP — Signature Help
+# =============================================================================
+
+@server.feature(
+    types.TEXT_DOCUMENT_SIGNATURE_HELP,
+    types.SignatureHelpOptions(
+        trigger_characters=["(", ","],
+        retrigger_characters=[","],
+    ),
+)
+def signature_help(
+    ls: LN4LanguageServer, params: types.SignatureHelpParams
+) -> types.SignatureHelp | None:
+    """Muestra firma de función/método al escribir '(' o ','."""
+    try:
+        doc = ls.workspace.get_text_document(params.text_document.uri)
+        source = doc.source
+    except Exception as e:
+        logger.error("Error obteniendo documento para signature help: %s", e)
+        return None
+
+    result = get_signature_help(
+        source,
+        params.position.line,
+        params.position.character,
+    )
+
+    if result:
+        sig_label = result.signatures[0].label if result.signatures else "?"
+        logger.debug("Signature help: %s (param %d)", sig_label, result.active_parameter)
+
+    return result

@@ -13,6 +13,8 @@ Verifica:
   - resolve_channel_item: resolución cross-channel
   - list_ti_items: lista items de un TI
   - find_tis_for_channel: lista TIs de un canal
+  - resolve_item_args: obtiene argumentos de un item
+  - resolve_item_with_args: item + argumentos combinados
 
 Uso:
     python -m ln4_lsp.tests.test_db_resolver
@@ -224,6 +226,83 @@ def test_resolve_channel_item_wrong_channel(resolver):
     assert result is None
 
 
+# -- Test: resolve_item_args con item que tiene argumentos --
+def test_resolve_item_args_with_args(resolver):
+    conn = resolver._get_connection()
+    cursor = conn.cursor()
+    # Buscar un item que tenga al menos 1 argumento
+    cursor.execute("""
+        SELECT TOP 1 a.ID_TI, a.ID_ITEM, COUNT(*) AS cnt
+        FROM M4RCH_ITEM_ARGS a
+        GROUP BY a.ID_TI, a.ID_ITEM
+        HAVING COUNT(*) > 0
+        ORDER BY cnt DESC
+    """)
+    row = cursor.fetchone()
+    assert row is not None, "No items with arguments found in M4RCH_ITEM_ARGS"
+
+    args = resolver.resolve_item_args(row.ID_TI, row.ID_ITEM)
+    assert len(args) > 0, f"Expected args for {row.ID_TI}.{row.ID_ITEM}"
+    # Verificar estructura de cada argumento
+    for arg in args:
+        assert "name" in arg, "Arg missing 'name'"
+        assert "position" in arg, "Arg missing 'position'"
+        assert "m4_type" in arg, "Arg missing 'm4_type'"
+    # Verificar que están ordenados por posición
+    positions = [a["position"] for a in args]
+    assert positions == sorted(positions), f"Args not sorted by position: {positions}"
+
+
+# -- Test: resolve_item_args sin argumentos --
+def test_resolve_item_args_no_args(resolver):
+    args = resolver.resolve_item_args("ZZZZZ_TI", "ZZZZZ_ITEM")
+    assert len(args) == 0, "Expected empty list for nonexistent item"
+
+
+# -- Test: resolve_item_args caching --
+def test_resolve_item_args_caching(resolver):
+    conn = resolver._get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT TOP 1 a.ID_TI, a.ID_ITEM
+        FROM M4RCH_ITEM_ARGS a
+    """)
+    row = cursor.fetchone()
+    assert row is not None, "No item args found"
+
+    # Primera llamada — llena el cache
+    args1 = resolver.resolve_item_args(row.ID_TI, row.ID_ITEM)
+    # Segunda llamada — debe venir del cache
+    args2 = resolver.resolve_item_args(row.ID_TI, row.ID_ITEM)
+    assert args1 is args2, "Expected cached result (same object reference)"
+
+
+# -- Test: resolve_item_with_args con método que tiene args --
+def test_resolve_item_with_args(resolver):
+    conn = resolver._get_connection()
+    cursor = conn.cursor()
+    # Buscar un item tipo Method (1) que tenga argumentos
+    cursor.execute("""
+        SELECT TOP 1 i.ID_TI, i.ID_ITEM
+        FROM M4RCH_ITEMS i
+        JOIN M4RCH_ITEM_ARGS a ON i.ID_TI = a.ID_TI AND i.ID_ITEM = a.ID_ITEM
+        WHERE i.ID_ITEM_TYPE = 1
+    """)
+    row = cursor.fetchone()
+    assert row is not None, "No methods with args found"
+
+    result = resolver.resolve_item_with_args(row.ID_TI, row.ID_ITEM)
+    assert result is not None, f"Expected to resolve {row.ID_TI}.{row.ID_ITEM}"
+    assert result.arguments is not None, "Expected arguments to be populated"
+    assert len(result.arguments) > 0, "Expected at least one argument"
+
+
+# -- Test: resolve_item_with_args para item inexistente --
+def test_resolve_item_with_args_none(resolver):
+    result = resolver.resolve_item_with_args("ZZZZZ_TI", "ZZZZZ_ITEM")
+    assert result is None, "Expected None for nonexistent item"
+
+
 # =============================================================================
 # Runner
 # =============================================================================
@@ -259,6 +338,11 @@ if __name__ == "__main__":
         ("find_tis_for_channel", test_find_tis_for_channel),
         ("resolve_channel_item cross-channel", test_resolve_channel_item),
         ("resolve_channel_item canal erróneo", test_resolve_channel_item_wrong_channel),
+        ("resolve_item_args con argumentos", test_resolve_item_args_with_args),
+        ("resolve_item_args sin argumentos", test_resolve_item_args_no_args),
+        ("resolve_item_args caching", test_resolve_item_args_caching),
+        ("resolve_item_with_args con método", test_resolve_item_with_args),
+        ("resolve_item_with_args inexistente", test_resolve_item_with_args_none),
     ]
 
     try:

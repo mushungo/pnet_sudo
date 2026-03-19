@@ -1,12 +1,13 @@
 # =============================================================================
 # ln4_lsp/completion.py — Autocompletado y hover para LN4
 # =============================================================================
-# Fase 4 del LSP: autocompletado y hover information.
+# Fase 4+ del LSP: autocompletado, hover information e item hover mejorado.
 #
 # Proporciona:
 #   1. Completion: funciones built-in (301), constantes, keywords
 #   2. Hover: documentación de funciones (firma, argumentos, comentarios)
-#   3. Signature help data (reusable para futura Phase)
+#   3. Hover de TI items: documentación enriquecida con ITEM_ARGS de BD
+#   4. Signature help data (reusable por signature_help.py)
 #
 # Los items de completion se pre-generan una sola vez al cargar el catálogo.
 # =============================================================================
@@ -338,3 +339,113 @@ def get_hover_for_word(word):
         )
 
     return None
+
+
+# =============================================================================
+# Hover para TI items — enriquecido con ITEM_ARGS de BD
+# =============================================================================
+
+def build_item_hover_markdown(resolved_symbol, item_type_names=None):
+    """Construye documentación markdown para un item de TI.
+
+    Incluye información del item (tipo, descripción) y sus argumentos
+    si están disponibles (de M4RCH_ITEM_ARGS).
+
+    Args:
+        resolved_symbol: ResolvedSymbol con arguments opcionales.
+        item_type_names: Dict de tipo → nombre (ej. {1: "Method"}).
+
+    Returns:
+        String markdown con la documentación del item.
+    """
+    if item_type_names is None:
+        from ln4_lsp.db_resolver import ITEM_TYPE_NAMES
+        item_type_names = ITEM_TYPE_NAMES
+
+    ti = resolved_symbol.ti_name or "?"
+    item = resolved_symbol.item_name or resolved_symbol.name or "?"
+    item_type = item_type_names.get(resolved_symbol.item_type, "Item")
+    desc_esp = resolved_symbol.description_esp or ""
+    desc_eng = resolved_symbol.description_eng or ""
+    args = resolved_symbol.arguments
+
+    lines = []
+
+    # Firma con argumentos si están disponibles
+    if args:
+        arg_strs = []
+        for arg in args:
+            name = arg.get("name", "?")
+            m4_type = arg.get("m4_type")
+            type_name = M4_TYPE_NAMES.get(m4_type, str(m4_type)) if m4_type is not None else "?"
+            arg_strs.append(f"{name}: {type_name}")
+        sig = f"{ti}.{item}({', '.join(arg_strs)})"
+    else:
+        sig = f"{ti}.{item}"
+        if resolved_symbol.item_type == 1:  # Method
+            sig += "()"
+
+    lines.append(f"```ln4\n{sig}\n```")
+    lines.append(f"**Tipo**: {item_type}")
+
+    if desc_esp:
+        lines.append(f"**Descripción**: {desc_esp}")
+    if desc_eng and desc_eng != desc_esp:
+        lines.append(f"**Description**: {desc_eng}")
+
+    # Detalles de argumentos
+    if args:
+        lines.append("")
+        lines.append("**Argumentos:**")
+        for arg in args:
+            name = arg.get("name", "?")
+            m4_type = arg.get("m4_type")
+            type_name = M4_TYPE_NAMES.get(m4_type, str(m4_type)) if m4_type is not None else "?"
+            arg_type = arg.get("arg_type")
+            suffix = ""
+            if arg_type == 2:
+                suffix = " *(output)*"
+            lines.append(f"- `{name}: {type_name}`{suffix}")
+
+    # Tipo M4 del item
+    m4_type = resolved_symbol.m4_type
+    if m4_type is not None:
+        m4_name = M4_TYPE_NAMES.get(m4_type, str(m4_type))
+        lines.append(f"\n**Tipo M4**: {m4_name}")
+
+    return "\n".join(lines)
+
+
+def get_hover_for_item(ti_name, item_name):
+    """Genera hover para un item de TI, consultando la BD para args.
+
+    Combina resolve_item_with_args para obtener el item y sus argumentos
+    en una sola operación.
+
+    Args:
+        ti_name: Nombre del TI.
+        item_name: Nombre del item.
+
+    Returns:
+        types.Hover o None si no se puede resolver.
+    """
+    try:
+        from ln4_lsp.db_resolver import get_resolver
+        resolver = get_resolver()
+        if not resolver.is_available:
+            return None
+
+        result = resolver.resolve_item_with_args(ti_name, item_name)
+        if result is None:
+            return None
+
+        md = build_item_hover_markdown(result)
+        return types.Hover(
+            contents=types.MarkupContent(
+                kind=types.MarkupKind.Markdown,
+                value=md,
+            )
+        )
+    except Exception as e:
+        logger.debug("Error en hover para %s.%s: %s", ti_name, item_name, e)
+        return None

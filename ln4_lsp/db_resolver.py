@@ -10,6 +10,7 @@
 #   3. resolve_ti(ti_name) → busca en M4RCH_TIS
 #   4. resolve_channel(channel_name) → busca en M4RCH_T3S
 #   5. resolve_channel_item(channel, ti, item) → cross-channel resolution
+#   6. resolve_item_args(ti_name, item_name) → busca en M4RCH_ITEM_ARGS
 #
 # La conexión a BD es opcional — si no está disponible, retorna None
 # y el servidor degrada a Tier 1 (in-document only).
@@ -42,12 +43,14 @@ class ResolvedSymbol:
         source_code: Código fuente de la regla (si es un item con regla).
         rule_id: ID de la regla (si aplica).
         start_date: Fecha de inicio de la regla (si aplica).
+        arguments: Lista de dicts con argumentos del item (de M4RCH_ITEM_ARGS).
+                   Cada dict: {name, position, m4_type, arg_type, precision, scale}.
     """
 
     __slots__ = [
         "name", "kind", "ti_name", "item_name", "channel_name",
         "item_type", "m4_type", "description_esp", "description_eng",
-        "source_code", "rule_id", "start_date",
+        "source_code", "rule_id", "start_date", "arguments",
     ]
 
     def __init__(self, name, kind, **kwargs):
@@ -63,6 +66,7 @@ class ResolvedSymbol:
         self.source_code = kwargs.get("source_code")
         self.rule_id = kwargs.get("rule_id")
         self.start_date = kwargs.get("start_date")
+        self.arguments = kwargs.get("arguments")
 
     def __repr__(self):
         parts = [f"{self.kind}:{self.name}"]
@@ -117,6 +121,7 @@ class DBResolver:
         self._conn = connection
         self._own_connection = connection is None
         self._available = None  # None = no verificado aún
+        self._item_args_cache = {}  # Cache: (ti, item) → list of arg dicts
 
     def _get_connection(self):
         """Obtiene la conexión a BD (lazy initialization)."""
@@ -156,6 +161,7 @@ class DBResolver:
                 pass
             self._conn = None
             self._available = None
+        self._item_args_cache.clear()
 
     # -----------------------------------------------------------------
     # resolve_item — busca un item por TI + nombre
@@ -440,6 +446,88 @@ class DBResolver:
         except Exception as e:
             logger.error("Error listando items de TI %s: %s", ti_name, e)
             return []
+
+    # -----------------------------------------------------------------
+    # resolve_item_args — obtiene los argumentos de un item
+    # -----------------------------------------------------------------
+    def resolve_item_args(self, ti_name, item_name):
+        """Obtiene los argumentos de un item desde M4RCH_ITEM_ARGS.
+
+        Los argumentos representan los parámetros de métodos/funciones de TI.
+        Se cachean por (ti, item) ya que se consultan repetidamente
+        durante signature help (cada keystroke dispara una consulta).
+
+        Args:
+            ti_name: Nombre del TI.
+            item_name: Nombre del item.
+
+        Returns:
+            Lista de dicts con keys: name, position, m4_type, arg_type,
+            precision, scale. Lista vacía si no hay argumentos o error.
+        """
+        key = (ti_name.upper(), item_name.upper())
+        if key in self._item_args_cache:
+            return self._item_args_cache[key]
+
+        conn = self._get_connection()
+        if not conn:
+            return []
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    a.ID_ARGUMENT, a.POSITION,
+                    a.ID_M4_TYPE, a.ID_ARGUMENT_TYPE,
+                    a.PREC, a.SCALE
+                FROM M4RCH_ITEM_ARGS a
+                WHERE a.ID_TI = ? AND a.ID_ITEM = ?
+                ORDER BY a.POSITION
+            """, key[0], key[1])
+            rows = cursor.fetchall()
+
+            args = []
+            for row in rows:
+                args.append({
+                    "name": row.ID_ARGUMENT,
+                    "position": row.POSITION,
+                    "m4_type": row.ID_M4_TYPE,
+                    "arg_type": row.ID_ARGUMENT_TYPE,
+                    "precision": row.PREC,
+                    "scale": row.SCALE,
+                })
+
+            self._item_args_cache[key] = args
+            return args
+
+        except Exception as e:
+            logger.error("Error obteniendo args de %s.%s: %s", ti_name, item_name, e)
+            self._item_args_cache[key] = []
+            return []
+
+    # -----------------------------------------------------------------
+    # resolve_item_with_args — resolve_item + resolve_item_args combinados
+    # -----------------------------------------------------------------
+    def resolve_item_with_args(self, ti_name, item_name):
+        """Resuelve un item y adjunta sus argumentos si los tiene.
+
+        Combina resolve_item + resolve_item_args en una sola llamada
+        para simplificar el uso desde hover y signature help.
+
+        Args:
+            ti_name: Nombre del TI.
+            item_name: Nombre del item.
+
+        Returns:
+            ResolvedSymbol con arguments poblado, o None.
+        """
+        result = self.resolve_item(ti_name, item_name)
+        if result is None:
+            return None
+
+        args = self.resolve_item_args(ti_name, item_name)
+        result.arguments = args if args else None
+        return result
 
     # -----------------------------------------------------------------
     # find_tis_for_channel — lista los TIs de un canal
