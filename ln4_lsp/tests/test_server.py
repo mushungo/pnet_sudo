@@ -16,7 +16,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from ln4_lsp.server import parse_ln4_source, errors_to_diagnostics, LN4LanguageServer
+from ln4_lsp.server import parse_ln4_source, errors_to_diagnostics, semantic_to_diagnostics, LN4LanguageServer
 
 
 # =============================================================================
@@ -54,7 +54,7 @@ TEST_CASES = [
 def run_test(description, code, expected_error_count):
     """Ejecuta un caso de prueba y retorna (passed, message)."""
     try:
-        errors = parse_ln4_source(code)
+        errors, tree = parse_ln4_source(code)
         diagnostics = errors_to_diagnostics(errors)
         actual_count = len(diagnostics)
 
@@ -78,7 +78,7 @@ def test_diagnostic_fields():
     from lsprotocol import types
 
     code = "If Then"  # Sintaxis inválida
-    errors = parse_ln4_source(code)
+    errors, tree = parse_ln4_source(code)
     diagnostics = errors_to_diagnostics(errors)
 
     assert len(diagnostics) >= 1, f"Esperaba >= 1 diagnóstico, obtuvo {len(diagnostics)}"
@@ -98,13 +98,13 @@ def test_diagnostic_fields():
 
 def test_empty_source():
     """Código vacío no debe generar errores."""
-    errors = parse_ln4_source("")
+    errors, tree = parse_ln4_source("")
     return len(errors) == 0
 
 
 def test_whitespace_only():
     """Solo espacios/tabs no debe generar errores."""
-    errors = parse_ln4_source("   \t  \n\n  ")
+    errors, tree = parse_ln4_source("   \t  \n\n  ")
     return len(errors) == 0
 
 
@@ -112,7 +112,7 @@ def test_server_initialization():
     """Verifica que el servidor se puede crear correctamente."""
     ls = LN4LanguageServer()
     assert ls.name == "ln4-language-server"
-    assert ls.version == "v0.2.0"
+    assert ls.version == "v0.3.0"
     return True
 
 

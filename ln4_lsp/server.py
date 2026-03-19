@@ -1,10 +1,13 @@
 # =============================================================================
 # ln4_lsp/server.py — Servidor LSP para el lenguaje LN4 de PeopleNet
 # =============================================================================
-# Fase 2 del LSP: servidor básico con pygls.
+# Fase 3 del LSP: servidor con diagnósticos sintácticos y semánticos.
 #   - Sincronización de documentos (open/change/close)
 #   - Parsing con gramática ANTLR4 en cada cambio
-#   - Publicación de diagnósticos (errores de sintaxis)
+#   - Publicación de diagnósticos:
+#       * Errores de sintaxis (ANTLR4 error listener)
+#       * Funciones desconocidas (warning) — validadas contra catálogo de 301 built-ins
+#       * Aridad incorrecta (error) — min/max args + argumentos variables
 #
 # Uso:
 #   python -m ln4_lsp             # STDIO (para editores)
@@ -29,6 +32,7 @@ if project_root not in sys.path:
 
 from ln4_lsp.generated.LN4Lexer import LN4Lexer
 from ln4_lsp.generated.LN4Parser import LN4Parser
+from ln4_lsp.semantic import analyze_semantics, SEVERITY_ERROR, SEVERITY_WARNING, SEVERITY_INFO
 
 logger = logging.getLogger("ln4-lsp")
 
@@ -52,14 +56,16 @@ class LN4ErrorListener(ErrorListener):
 # Funciones auxiliares de parsing
 # =============================================================================
 def parse_ln4_source(source_code):
-    """Parsea código LN4 y retorna la lista de errores de sintaxis.
+    """Parsea código LN4 y retorna errores de sintaxis y el parse tree.
 
     Args:
         source_code: Texto fuente del documento LN4.
 
     Returns:
-        Lista de tuplas (line, column, message, offendingSymbol).
-        line es 1-indexed (ANTLR4 convention).
+        Tupla (errors, tree) donde:
+          - errors: Lista de tuplas (line, column, message, offendingSymbol).
+            line es 1-indexed (ANTLR4 convention).
+          - tree: Parse tree de ANTLR4 (retornado por parser.program()).
     """
     error_listener = LN4ErrorListener()
 
@@ -74,9 +80,9 @@ def parse_ln4_source(source_code):
     parser.addErrorListener(error_listener)
 
     # Ejecutar el parsing completo
-    parser.program()
+    tree = parser.program()
 
-    return error_listener.errors
+    return error_listener.errors, tree
 
 
 def errors_to_diagnostics(errors):
@@ -116,20 +122,67 @@ def errors_to_diagnostics(errors):
     return diagnostics
 
 
+def semantic_to_diagnostics(semantic_diags):
+    """Convierte diagnósticos semánticos en LSP Diagnostics.
+
+    Args:
+        semantic_diags: Lista de (line, column, end_column, message, severity)
+                       del analizador semántico.
+
+    Returns:
+        Lista de types.Diagnostic.
+    """
+    SEVERITY_MAP = {
+        SEVERITY_ERROR: types.DiagnosticSeverity.Error,
+        SEVERITY_WARNING: types.DiagnosticSeverity.Warning,
+        SEVERITY_INFO: types.DiagnosticSeverity.Information,
+    }
+
+    diagnostics = []
+
+    for line, column, end_column, msg, severity in semantic_diags:
+        # ANTLR4 line es 1-indexed, LSP es 0-indexed
+        lsp_line = max(0, line - 1)
+        lsp_col = max(0, column)
+        lsp_end_col = max(lsp_col + 1, end_column)
+
+        diagnostics.append(
+            types.Diagnostic(
+                message=msg,
+                severity=SEVERITY_MAP.get(severity, types.DiagnosticSeverity.Warning),
+                source="ln4-semantic",
+                range=types.Range(
+                    start=types.Position(line=lsp_line, character=lsp_col),
+                    end=types.Position(line=lsp_line, character=lsp_end_col),
+                ),
+            )
+        )
+
+    return diagnostics
+
+
 # =============================================================================
 # Servidor LSP
 # =============================================================================
 class LN4LanguageServer(LanguageServer):
     """Servidor LSP para el lenguaje LN4 de PeopleNet.
 
-    Fase 2: sincronización de documentos y diagnósticos de sintaxis.
+    Fase 3: sincronización de documentos, diagnósticos de sintaxis y semánticos.
     """
 
     def __init__(self):
-        super().__init__("ln4-language-server", "v0.2.0")
+        super().__init__("ln4-language-server", "v0.3.0")
 
     def parse_and_publish(self, uri):
         """Parsea un documento y publica los diagnósticos al cliente.
+
+        Ejecuta dos fases de análisis:
+          1. Parsing ANTLR4 → errores de sintaxis
+          2. Análisis semántico → funciones desconocidas, aridad incorrecta
+
+        Los diagnósticos semánticos solo se ejecutan si el parsing fue exitoso
+        (sin errores de sintaxis), porque un árbol con errores puede generar
+        falsos positivos en el análisis semántico.
 
         Args:
             uri: URI del documento a parsear.
@@ -141,9 +194,21 @@ class LN4LanguageServer(LanguageServer):
             logger.error("Error al obtener documento %s: %s", uri, e)
             return
 
+        diagnostics = []
+
         try:
-            errors = parse_ln4_source(source)
-            diagnostics = errors_to_diagnostics(errors)
+            errors, tree = parse_ln4_source(source)
+            syntax_diags = errors_to_diagnostics(errors)
+            diagnostics.extend(syntax_diags)
+
+            # Fase 2: análisis semántico — solo si no hay errores de sintaxis
+            if not errors and tree is not None:
+                try:
+                    semantic_diags = analyze_semantics(tree)
+                    diagnostics.extend(semantic_to_diagnostics(semantic_diags))
+                except Exception as e:
+                    logger.error("Error en análisis semántico de %s: %s", uri, e)
+
         except Exception as e:
             logger.error("Error al parsear %s: %s", uri, e)
             # En caso de error interno del parser, reportar un diagnóstico genérico
@@ -168,8 +233,11 @@ class LN4LanguageServer(LanguageServer):
         )
 
         if diagnostics:
+            syntax_count = len([d for d in diagnostics if d.source == "ln4"])
+            semantic_count = len([d for d in diagnostics if d.source == "ln4-semantic"])
             logger.info(
-                "Publicados %d diagnósticos para %s", len(diagnostics), uri
+                "Publicados %d diagnósticos (%d syntax, %d semantic) para %s",
+                len(diagnostics), syntax_count, semantic_count, uri,
             )
         else:
             logger.debug("Sin errores en %s", uri)
