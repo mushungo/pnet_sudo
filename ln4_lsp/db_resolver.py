@@ -530,6 +530,99 @@ class DBResolver:
         return result
 
     # -----------------------------------------------------------------
+    # resolve_all_args_for_ti — batch fetch de argumentos de un TI
+    # -----------------------------------------------------------------
+    def resolve_all_args_for_ti(self, ti_name):
+        """Obtiene los argumentos de TODOS los items de un TI en batch.
+
+        Ejecuta una sola consulta a M4RCH_ITEM_ARGS filtrando por ID_TI,
+        agrupa los resultados por ID_ITEM y los cachea individualmente.
+        Esto evita N+1 queries cuando se listan los items de un TI para
+        autocompletado contextual.
+
+        Args:
+            ti_name: Nombre del TI.
+
+        Returns:
+            Dict {item_name: [arg_dicts]} con los argumentos agrupados.
+            Vacío si hay error o no hay argumentos.
+        """
+        ti_upper = ti_name.upper()
+        conn = self._get_connection()
+        if not conn:
+            return {}
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    a.ID_ITEM, a.ID_ARGUMENT, a.POSITION,
+                    a.ID_M4_TYPE, a.ID_ARGUMENT_TYPE,
+                    a.PREC, a.SCALE
+                FROM M4RCH_ITEM_ARGS a
+                WHERE a.ID_TI = ?
+                ORDER BY a.ID_ITEM, a.POSITION
+            """, ti_upper)
+            rows = cursor.fetchall()
+
+            grouped = {}
+            for row in rows:
+                item_id = row.ID_ITEM
+                if item_id not in grouped:
+                    grouped[item_id] = []
+                grouped[item_id].append({
+                    "name": row.ID_ARGUMENT,
+                    "position": row.POSITION,
+                    "m4_type": row.ID_M4_TYPE,
+                    "arg_type": row.ID_ARGUMENT_TYPE,
+                    "precision": row.PREC,
+                    "scale": row.SCALE,
+                })
+
+            # Cachear cada item individualmente en _item_args_cache
+            for item_id, args in grouped.items():
+                self._item_args_cache[(ti_upper, item_id)] = args
+
+            logger.debug(
+                "Batch args para TI %s: %d items con args (%d args total)",
+                ti_upper, len(grouped), len(rows),
+            )
+            return grouped
+
+        except Exception as e:
+            logger.error("Error batch args de TI %s: %s", ti_name, e)
+            return {}
+
+    # -----------------------------------------------------------------
+    # list_ti_items_with_args — items + args en batch (2 queries)
+    # -----------------------------------------------------------------
+    def list_ti_items_with_args(self, ti_name):
+        """Lista todos los items de un TI con sus argumentos pre-cargados.
+
+        Combina list_ti_items + resolve_all_args_for_ti en 2 queries
+        (items + args) y adjunta los argumentos a cada ResolvedSymbol.
+        Óptimo para autocompletado contextual después de 'TI.'.
+
+        Args:
+            ti_name: Nombre del TI.
+
+        Returns:
+            Lista de ResolvedSymbol con arguments poblado, o lista vacía.
+        """
+        # 1. Batch fetch de args (1 query, cachea individualmente)
+        all_args = self.resolve_all_args_for_ti(ti_name)
+
+        # 2. Lista de items (1 query)
+        items = self.list_ti_items(ti_name)
+
+        # 3. Adjuntar args a cada item
+        for item in items:
+            item_args = all_args.get(item.item_name)
+            item.arguments = item_args if item_args else None
+
+        return items
+
+    # -----------------------------------------------------------------
     # find_tis_for_channel — lista los TIs de un canal
     # -----------------------------------------------------------------
     def find_tis_for_channel(self, channel_name):

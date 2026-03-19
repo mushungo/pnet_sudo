@@ -5,11 +5,13 @@
 #
 # Proporciona:
 #   1. Completion: funciones built-in (301), constantes, keywords
-#   2. Hover: documentación de funciones (firma, argumentos, comentarios)
-#   3. Hover de TI items: documentación enriquecida con ITEM_ARGS de BD
-#   4. Signature help data (reusable por signature_help.py)
+#   2. Completion contextual: items de TI desde BD (tras "TI.")
+#   3. Hover: documentación de funciones (firma, argumentos, comentarios)
+#   4. Hover de TI items: documentación enriquecida con ITEM_ARGS de BD
+#   5. Signature help data (reusable por signature_help.py)
 #
-# Los items de completion se pre-generan una sola vez al cargar el catálogo.
+# Los items de completion estáticos se pre-generan una sola vez al cargar.
+# Los items de TI se generan dinámicamente por consulta a BD.
 # =============================================================================
 
 import logging
@@ -449,3 +451,207 @@ def get_hover_for_item(ti_name, item_name):
     except Exception as e:
         logger.debug("Error en hover para %s.%s: %s", ti_name, item_name, e)
         return None
+
+
+# =============================================================================
+# Completion contextual — items de TI desde BD (tras "TI.")
+# =============================================================================
+
+# Mapeo de ITEM_TYPE → CompletionItemKind
+_ITEM_TYPE_TO_COMPLETION_KIND = {
+    1: types.CompletionItemKind.Method,     # Method
+    2: types.CompletionItemKind.Property,   # Property
+    3: types.CompletionItemKind.Field,      # Field
+    4: types.CompletionItemKind.Interface,  # Concept
+}
+
+
+def _build_item_signature_str(item_name, args):
+    """Construye la firma de un item con sus argumentos.
+
+    Args:
+        item_name: Nombre del item.
+        args: Lista de dicts de argumentos (de ITEM_ARGS), o None.
+
+    Returns:
+        String con la firma, ej. "MyMethod(arg1: VarChar, arg2: Number)".
+    """
+    if not args:
+        return f"{item_name}()"
+
+    arg_strs = []
+    for arg in args:
+        name = arg.get("name", "?")
+        m4_type = arg.get("m4_type")
+        type_name = M4_TYPE_NAMES.get(m4_type, str(m4_type)) if m4_type is not None else "?"
+        arg_type = arg.get("arg_type")
+        suffix = " [out]" if arg_type == 2 else ""
+        arg_strs.append(f"{name}: {type_name}{suffix}")
+
+    return f"{item_name}({', '.join(arg_strs)})"
+
+
+def _build_item_snippet(item_name, item_type, args):
+    """Construye un snippet de inserción para un item de TI.
+
+    Para métodos (type=1) con argumentos, genera placeholders:
+        MyMethod(${1:arg1}, ${2:arg2})
+    Para métodos sin argumentos:
+        MyMethod()$0
+    Para properties/fields/concepts:
+        ItemName (sin paréntesis)
+
+    Args:
+        item_name: Nombre del item.
+        item_type: Tipo de item (1=Method, 2=Property, 3=Field, 4=Concept).
+        args: Lista de dicts de argumentos, o None.
+
+    Returns:
+        Tupla (snippet_text, insert_text_format).
+    """
+    if item_type == 1:  # Method
+        if args:
+            # Solo args de input (arg_type != 2) como placeholders
+            input_args = [a for a in args if a.get("arg_type") != 2]
+            if input_args:
+                placeholders = []
+                for i, arg in enumerate(input_args, 1):
+                    arg_name = arg.get("name", f"arg{i}")
+                    placeholders.append(f"${{{i}:{arg_name}}}")
+                return (
+                    f"{item_name}({', '.join(placeholders)})",
+                    types.InsertTextFormat.Snippet,
+                )
+            # Todos los args son output — paréntesis vacíos
+            return (f"{item_name}()$0", types.InsertTextFormat.Snippet)
+        # Sin args
+        return (f"{item_name}()$0", types.InsertTextFormat.Snippet)
+
+    # Property, Field, Concept — sin paréntesis
+    return (item_name, types.InsertTextFormat.PlainText)
+
+
+def _build_item_documentation(resolved_symbol):
+    """Construye la documentación markdown para un item de TI en completion.
+
+    Versión simplificada de build_item_hover_markdown() para el popup
+    de autocompletado (más compacto).
+
+    Args:
+        resolved_symbol: ResolvedSymbol con arguments opcionales.
+
+    Returns:
+        String markdown.
+    """
+    from ln4_lsp.db_resolver import ITEM_TYPE_NAMES
+
+    item_type = ITEM_TYPE_NAMES.get(resolved_symbol.item_type, "Item")
+    desc_esp = resolved_symbol.description_esp or ""
+    desc_eng = resolved_symbol.description_eng or ""
+    args = resolved_symbol.arguments
+
+    lines = []
+    lines.append(f"**{item_type}**")
+
+    if desc_esp:
+        lines.append(desc_esp)
+    elif desc_eng:
+        lines.append(desc_eng)
+
+    if args:
+        lines.append("")
+        lines.append("**Args:**")
+        for arg in args:
+            name = arg.get("name", "?")
+            m4_type = arg.get("m4_type")
+            type_name = M4_TYPE_NAMES.get(m4_type, str(m4_type)) if m4_type is not None else "?"
+            suffix = ""
+            if arg.get("arg_type") == 2:
+                suffix = " *(out)*"
+            lines.append(f"- `{name}: {type_name}`{suffix}")
+
+    m4_type = resolved_symbol.m4_type
+    if m4_type is not None:
+        m4_name = M4_TYPE_NAMES.get(m4_type, str(m4_type))
+        lines.append(f"\n**Tipo M4**: {m4_name}")
+
+    return "\n".join(lines)
+
+
+def get_contextual_completion(ti_name):
+    """Genera CompletionItems para los items de un TI específico.
+
+    Consulta la BD en batch (2 queries: items + args) y construye
+    CompletionItems con firmas, snippets y documentación enriquecida.
+
+    Args:
+        ti_name: Nombre del TI (se busca case-insensitive).
+
+    Returns:
+        Lista de CompletionItem, o lista vacía si no hay BD o TI no existe.
+    """
+    try:
+        from ln4_lsp.db_resolver import get_resolver
+        resolver = get_resolver()
+        if not resolver.is_available:
+            return []
+
+        # Batch: items + args en 2 queries
+        items = resolver.list_ti_items_with_args(ti_name)
+        if not items:
+            return []
+
+        completion_items = []
+        for resolved in items:
+            kind = _ITEM_TYPE_TO_COMPLETION_KIND.get(
+                resolved.item_type, types.CompletionItemKind.Variable
+            )
+
+            # Firma para detail
+            if resolved.item_type == 1:  # Method
+                detail = _build_item_signature_str(
+                    resolved.item_name, resolved.arguments
+                )
+            else:
+                type_label = {
+                    2: "Property", 3: "Field", 4: "Concept"
+                }.get(resolved.item_type, "Item")
+                m4_type = resolved.m4_type
+                if m4_type is not None:
+                    m4_name = M4_TYPE_NAMES.get(m4_type, str(m4_type))
+                    detail = f"{type_label}: {m4_name}"
+                else:
+                    detail = type_label
+
+            # Snippet
+            snippet_text, insert_format = _build_item_snippet(
+                resolved.item_name, resolved.item_type, resolved.arguments
+            )
+
+            # Documentación
+            doc_md = _build_item_documentation(resolved)
+
+            completion_items.append(
+                types.CompletionItem(
+                    label=resolved.item_name,
+                    kind=kind,
+                    detail=detail,
+                    documentation=types.MarkupContent(
+                        kind=types.MarkupKind.Markdown,
+                        value=doc_md,
+                    ),
+                    insert_text=snippet_text,
+                    insert_text_format=insert_format,
+                    sort_text=f"0_{resolved.item_name}",
+                )
+            )
+
+        logger.info(
+            "Generados %d items contextuales para TI '%s'",
+            len(completion_items), ti_name,
+        )
+        return completion_items
+
+    except Exception as e:
+        logger.debug("Error en completion contextual para TI %s: %s", ti_name, e)
+        return []

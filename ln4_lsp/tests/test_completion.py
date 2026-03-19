@@ -8,6 +8,7 @@
 #   4. Hover retorna documentación para constantes
 #   5. Hover retorna documentación para keywords
 #   6. Hover retorna None para palabras desconocidas
+#   7. Completion contextual genera items de TI con args (mock)
 # =============================================================================
 
 import sys
@@ -27,9 +28,13 @@ from ln4_lsp.completion import (
     _build_snippet,
     _build_hover_markdown,
     _format_arg,
+    _build_item_signature_str,
+    _build_item_snippet,
+    _build_item_documentation,
     LN4_KEYWORDS,
 )
 from ln4_lsp.ln4_builtins import get_catalog, LN4_CONSTANTS
+from ln4_lsp.db_resolver import ResolvedSymbol, ITEM_TYPE_METHOD, ITEM_TYPE_PROPERTY, ITEM_TYPE_FIELD
 
 
 # =============================================================================
@@ -323,6 +328,139 @@ def test_format_arg_optional():
 
 
 # =============================================================================
+# Tests de completion contextual — helpers para items de TI (mock)
+# =============================================================================
+
+def _make_mock_resolved(name, item_type, m4_type=None, args=None,
+                        desc_esp=None, desc_eng=None):
+    """Crea un ResolvedSymbol simulado para tests."""
+    return ResolvedSymbol(
+        name=name,
+        kind="item",
+        ti_name="TEST_TI",
+        item_name=name,
+        item_type=item_type,
+        m4_type=m4_type,
+        description_esp=desc_esp,
+        description_eng=desc_eng,
+        arguments=args,
+    )
+
+
+def test_item_signature_str_with_args():
+    """Firma de item con argumentos muestra tipos."""
+    args = [
+        {"name": "ARG1", "m4_type": 2, "arg_type": 1},
+        {"name": "ARG2", "m4_type": 6, "arg_type": 1},
+    ]
+    sig = _build_item_signature_str("MyMethod", args)
+    assert sig == "MyMethod(ARG1: VarChar, ARG2: Number)", f"Firma: {sig}"
+    return True
+
+
+def test_item_signature_str_no_args():
+    """Firma de item sin argumentos muestra paréntesis vacíos."""
+    sig = _build_item_signature_str("MyMethod", None)
+    assert sig == "MyMethod()", f"Firma: {sig}"
+    sig2 = _build_item_signature_str("MyMethod", [])
+    assert sig2 == "MyMethod()", f"Firma: {sig2}"
+    return True
+
+
+def test_item_signature_str_output_arg():
+    """Firma de item con arg output muestra [out]."""
+    args = [
+        {"name": "IN", "m4_type": 2, "arg_type": 1},
+        {"name": "OUT", "m4_type": 7, "arg_type": 2},
+    ]
+    sig = _build_item_signature_str("Calc", args)
+    assert "OUT: Variant [out]" in sig, f"Firma: {sig}"
+    return True
+
+
+def test_item_snippet_method_with_args():
+    """Snippet de método con argumentos genera placeholders."""
+    args = [
+        {"name": "ARG1", "m4_type": 2, "arg_type": 1},
+        {"name": "ARG2", "m4_type": 6, "arg_type": 1},
+    ]
+    text, fmt = _build_item_snippet("MyMethod", ITEM_TYPE_METHOD, args)
+    assert fmt == types.InsertTextFormat.Snippet
+    assert "${1:ARG1}" in text, f"Snippet: {text}"
+    assert "${2:ARG2}" in text, f"Snippet: {text}"
+    return True
+
+
+def test_item_snippet_method_no_args():
+    """Snippet de método sin argumentos: Method()$0."""
+    text, fmt = _build_item_snippet("NoArgs", ITEM_TYPE_METHOD, None)
+    assert text == "NoArgs()$0", f"Snippet: {text}"
+    assert fmt == types.InsertTextFormat.Snippet
+    return True
+
+
+def test_item_snippet_method_only_output_args():
+    """Snippet de método con solo output args: paréntesis vacíos."""
+    args = [{"name": "OUT", "m4_type": 7, "arg_type": 2}]
+    text, fmt = _build_item_snippet("GetVal", ITEM_TYPE_METHOD, args)
+    assert text == "GetVal()$0", f"Snippet: {text}"
+    return True
+
+
+def test_item_snippet_property():
+    """Snippet de property: solo el nombre, sin paréntesis."""
+    text, fmt = _build_item_snippet("MyProp", ITEM_TYPE_PROPERTY, None)
+    assert text == "MyProp", f"Snippet: {text}"
+    assert fmt == types.InsertTextFormat.PlainText
+    return True
+
+
+def test_item_snippet_field():
+    """Snippet de field: solo el nombre, sin paréntesis."""
+    text, fmt = _build_item_snippet("MyField", ITEM_TYPE_FIELD, None)
+    assert text == "MyField", f"Snippet: {text}"
+    assert fmt == types.InsertTextFormat.PlainText
+    return True
+
+
+def test_item_documentation_method_with_args():
+    """Documentación de método con argumentos muestra la lista."""
+    args = [
+        {"name": "X", "m4_type": 6, "arg_type": 1},
+        {"name": "Y", "m4_type": 6, "arg_type": 2},
+    ]
+    resolved = _make_mock_resolved("Calc", ITEM_TYPE_METHOD, m4_type=6,
+                                    args=args, desc_esp="Calcula algo")
+    doc = _build_item_documentation(resolved)
+    assert "**Method**" in doc, f"Doc: {doc}"
+    assert "Calcula algo" in doc, f"Doc: {doc}"
+    assert "`X: Number`" in doc, f"Doc: {doc}"
+    assert "*(out)*" in doc, f"Doc: {doc}"
+    return True
+
+
+def test_item_documentation_property_no_args():
+    """Documentación de property sin argumentos."""
+    resolved = _make_mock_resolved("Status", ITEM_TYPE_PROPERTY, m4_type=2,
+                                    desc_esp="Estado actual")
+    doc = _build_item_documentation(resolved)
+    assert "**Property**" in doc, f"Doc: {doc}"
+    assert "Estado actual" in doc, f"Doc: {doc}"
+    assert "VarChar" in doc, f"Doc: {doc}"
+    assert "Args" not in doc, f"Doc no debería tener Args: {doc}"
+    return True
+
+
+def test_item_documentation_english_fallback():
+    """Documentación usa descripción inglesa si no hay española."""
+    resolved = _make_mock_resolved("Name", ITEM_TYPE_FIELD, m4_type=2,
+                                    desc_eng="Employee name")
+    doc = _build_item_documentation(resolved)
+    assert "Employee name" in doc, f"Doc: {doc}"
+    return True
+
+
+# =============================================================================
 # Main
 # =============================================================================
 def main():
@@ -368,6 +506,19 @@ def main():
         # Format helpers
         ("Formato arg requerido", test_format_arg_required),
         ("Formato arg opcional", test_format_arg_optional),
+
+        # Contextual completion helpers (mock)
+        ("Item firma con args", test_item_signature_str_with_args),
+        ("Item firma sin args", test_item_signature_str_no_args),
+        ("Item firma con output arg", test_item_signature_str_output_arg),
+        ("Item snippet método con args", test_item_snippet_method_with_args),
+        ("Item snippet método sin args", test_item_snippet_method_no_args),
+        ("Item snippet método solo output", test_item_snippet_method_only_output_args),
+        ("Item snippet property", test_item_snippet_property),
+        ("Item snippet field", test_item_snippet_field),
+        ("Item doc método con args", test_item_documentation_method_with_args),
+        ("Item doc property sin args", test_item_documentation_property_no_args),
+        ("Item doc fallback inglés", test_item_documentation_english_fallback),
     ]
 
     for name, test_fn in tests:

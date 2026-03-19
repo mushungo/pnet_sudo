@@ -10,6 +10,7 @@
 #       * Funciones desconocidas (warning) — validadas contra catálogo de 301 built-ins
 #       * Aridad incorrecta (error) — min/max args + argumentos variables
 #   - Autocompletado: 301 funciones built-in + keywords + constantes
+#   - Autocompletado contextual: items de TI desde BD tras "TI." (con args)
 #   - Hover: documentación de funciones, constantes, keywords y TI items (BD)
 #   - Go-to-definition: variables locales (Tier 1) + TI/items/canales via BD (Tier 2)
 #   - Signature help: firmas de funciones built-in y métodos de TI (BD)
@@ -38,7 +39,7 @@ if project_root not in sys.path:
 from ln4_lsp.generated.LN4Lexer import LN4Lexer
 from ln4_lsp.generated.LN4Parser import LN4Parser
 from ln4_lsp.semantic import analyze_semantics, SEVERITY_ERROR, SEVERITY_WARNING, SEVERITY_INFO
-from ln4_lsp.completion import get_completion_items, get_hover_for_word, get_hover_for_item
+from ln4_lsp.completion import get_completion_items, get_hover_for_word, get_hover_for_item, get_contextual_completion
 from ln4_lsp.definition import resolve_definition
 from ln4_lsp.signature_help import get_signature_help
 
@@ -315,7 +316,44 @@ def did_save(ls: LN4LanguageServer, params: types.DidSaveTextDocumentParams):
 def completion(
     ls: LN4LanguageServer, params: types.CompletionParams
 ) -> types.CompletionList:
-    """Proporciona autocompletado para funciones built-in, keywords y constantes."""
+    """Proporciona autocompletado para funciones built-in, keywords, constantes
+    y items de TI (contextual).
+
+    Cuando el trigger es '.', intenta detectar el TI name antes del punto
+    y consulta la BD para listar sus items con argumentos enriquecidos.
+    En cualquier otro caso, retorna la lista estática de built-ins.
+    """
+    # Detectar si es completion contextual tras "TI."
+    trigger = None
+    if params.context:
+        trigger = params.context.trigger_character
+
+    if trigger == ".":
+        try:
+            doc = ls.workspace.get_text_document(params.text_document.uri)
+            line_text = doc.source.split("\n")[params.position.line]
+            col = params.position.character
+
+            # Extraer el identificador antes del "."
+            # El cursor está después del ".", así que buscamos antes de col-1
+            import re
+            before_dot = line_text[:max(0, col - 1)].rstrip()
+            ti_match = re.search(r'(\w+)\s*$', before_dot)
+            if ti_match:
+                ti_name = ti_match.group(1)
+                contextual_items = get_contextual_completion(ti_name)
+                if contextual_items:
+                    logger.debug(
+                        "Completion contextual: %d items para TI '%s'",
+                        len(contextual_items), ti_name,
+                    )
+                    return types.CompletionList(
+                        is_incomplete=False, items=contextual_items
+                    )
+        except Exception as e:
+            logger.debug("Error en completion contextual: %s", e)
+
+    # Fallback: lista estática de built-ins + keywords + constantes
     items = get_completion_items()
     return types.CompletionList(is_incomplete=False, items=items)
 

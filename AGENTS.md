@@ -29,7 +29,7 @@ This document provides guidelines for agentic coding agents working in this repo
 
 ### LN4 LSP — Estado Actual
 
-El LSP para LN4 está **completo en 6 fases**:
+El LSP para LN4 está **completo en 6 fases + mejoras incrementales**:
 
 | Fase | Descripción | Directorio/Archivos clave |
 |---|---|---|
@@ -39,6 +39,9 @@ El LSP para LN4 está **completo en 6 fases**:
 | 4 | Autocompletado + Hover | `ln4_lsp/completion.py` |
 | 5 | Go-to-definition | `ln4_lsp/symbol_index.py`, `ln4_lsp/db_resolver.py`, `ln4_lsp/definition.py` |
 | 6 | Extensión VS Code | `vscode-ln4/` (package.json, extension.ts, tmLanguage, etc.) |
+| + | Signature Help (built-in + TI methods) | `ln4_lsp/signature_help.py` |
+| + | Completion contextual de TI items | `ln4_lsp/completion.py` (tras "TI.") |
+| + | Hover DB para TI.ITEM con ITEM_ARGS | `ln4_lsp/completion.py`, `ln4_lsp/db_resolver.py` |
 
 **Cómo ejecutar el LSP:**
 ```bash
@@ -50,11 +53,12 @@ python -m ln4_lsp --tcp    # TCP (para desarrollo/debug)
 ```bash
 python -m ln4_lsp.tests.test_parser        # 13 samples
 python -m ln4_lsp.tests.test_semantic       # 23 tests
-python -m ln4_lsp.tests.test_completion     # 26 tests
+python -m ln4_lsp.tests.test_completion     # 37 tests
 python -m ln4_lsp.tests.test_symbol_index   # 21 tests
 python -m ln4_lsp.tests.test_definition     # 16 tests
-python -m ln4_lsp.tests.test_db_resolver    # 14 tests (requiere DB)
-python -m ln4_lsp.tests.test_server         # 4 integration tests
+python -m ln4_lsp.tests.test_db_resolver    # 24 tests (requiere DB)
+python -m ln4_lsp.tests.test_signature_help # 31 tests
+python -m ln4_lsp.tests.test_server         # 27 tests
 python -m ln4_lsp.tests.test_lsp_integration # 4 end-to-end tests
 ```
 

@@ -303,6 +303,88 @@ def test_resolve_item_with_args_none(resolver):
     assert result is None, "Expected None for nonexistent item"
 
 
+# -- Test: resolve_all_args_for_ti batch --
+def test_resolve_all_args_for_ti(resolver):
+    conn = resolver._get_connection()
+    cursor = conn.cursor()
+    # Buscar un TI que tenga items con argumentos
+    cursor.execute("""
+        SELECT TOP 1 a.ID_TI, COUNT(DISTINCT a.ID_ITEM) AS item_cnt
+        FROM M4RCH_ITEM_ARGS a
+        GROUP BY a.ID_TI
+        HAVING COUNT(DISTINCT a.ID_ITEM) > 1
+        ORDER BY item_cnt DESC
+    """)
+    row = cursor.fetchone()
+    assert row is not None, "No TI with multiple items+args found"
+
+    grouped = resolver.resolve_all_args_for_ti(row.ID_TI)
+    assert len(grouped) >= 2, f"Expected >=2 items with args, got {len(grouped)}"
+    # Verificar que cada item tiene args ordenados
+    for item_id, args in grouped.items():
+        assert len(args) > 0, f"Empty args for {item_id}"
+        positions = [a["position"] for a in args]
+        assert positions == sorted(positions), f"Args for {item_id} not sorted"
+
+
+# -- Test: resolve_all_args_for_ti popula cache individual --
+def test_resolve_all_args_for_ti_caching(resolver):
+    conn = resolver._get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT TOP 1 a.ID_TI, a.ID_ITEM
+        FROM M4RCH_ITEM_ARGS a
+    """)
+    row = cursor.fetchone()
+    assert row is not None
+
+    # Limpiar cache
+    resolver._item_args_cache.clear()
+
+    # Batch fetch
+    resolver.resolve_all_args_for_ti(row.ID_TI)
+
+    # Verificar que el cache individual fue poblado
+    key = (row.ID_TI.upper(), row.ID_ITEM.upper())
+    assert key in resolver._item_args_cache, \
+        f"Cache not populated for {key}"
+
+
+# -- Test: resolve_all_args_for_ti con TI inexistente --
+def test_resolve_all_args_for_ti_empty(resolver):
+    grouped = resolver.resolve_all_args_for_ti("ZZZZZ_TI")
+    assert len(grouped) == 0, "Expected empty dict for nonexistent TI"
+
+
+# -- Test: list_ti_items_with_args batch --
+def test_list_ti_items_with_args(resolver):
+    conn = resolver._get_connection()
+    cursor = conn.cursor()
+    # Buscar un TI que tenga items
+    cursor.execute("""
+        SELECT TOP 1 i.ID_TI, COUNT(*) AS cnt
+        FROM M4RCH_ITEMS i
+        JOIN M4RCH_ITEM_ARGS a ON i.ID_TI = a.ID_TI AND i.ID_ITEM = a.ID_ITEM
+        GROUP BY i.ID_TI
+        HAVING COUNT(*) > 0
+        ORDER BY cnt DESC
+    """)
+    row = cursor.fetchone()
+    assert row is not None, "No TI with items+args found"
+
+    items = resolver.list_ti_items_with_args(row.ID_TI)
+    assert len(items) > 0, f"Expected items for TI {row.ID_TI}"
+    # Al menos un item debe tener argumentos
+    has_args = [i for i in items if i.arguments]
+    assert len(has_args) > 0, "Expected at least one item with args"
+
+
+# -- Test: list_ti_items_with_args con TI inexistente --
+def test_list_ti_items_with_args_empty(resolver):
+    items = resolver.list_ti_items_with_args("ZZZZZ_TI")
+    assert len(items) == 0, "Expected empty list for nonexistent TI"
+
+
 # =============================================================================
 # Runner
 # =============================================================================
@@ -343,6 +425,11 @@ if __name__ == "__main__":
         ("resolve_item_args caching", test_resolve_item_args_caching),
         ("resolve_item_with_args con método", test_resolve_item_with_args),
         ("resolve_item_with_args inexistente", test_resolve_item_with_args_none),
+        ("resolve_all_args_for_ti batch", test_resolve_all_args_for_ti),
+        ("resolve_all_args_for_ti caching", test_resolve_all_args_for_ti_caching),
+        ("resolve_all_args_for_ti vacío", test_resolve_all_args_for_ti_empty),
+        ("list_ti_items_with_args batch", test_list_ti_items_with_args),
+        ("list_ti_items_with_args vacío", test_list_ti_items_with_args_empty),
     ]
 
     try:
