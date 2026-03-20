@@ -24,6 +24,8 @@ if %ERRORLEVEL% equ 0 (
 echo.
 
 echo Ejecutando 'opencode' con los parametros proporcionados...
+echo recuerda. Comando para la carga del contexto:
+echo    engram_mem_context [project=pnet_sudo]
 echo.
 
 REM Ejecuta opencode y le pasa todos los argumentos que se pasaron a este script (%*).
