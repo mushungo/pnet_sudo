@@ -24,6 +24,15 @@
       },
       "default": []
     },
+    "skills_disponibles": {
+      "description": "Lista de nombres de skills (specs) que el agente puede consultar o invocar. Los nombres corresponden al campo 'nombre' del frontmatter YAML de cada skill.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "default": []
+    },
     "personalidad": {
       "description": "Define los rasgos de comportamiento del agente.",
       "type": "object",

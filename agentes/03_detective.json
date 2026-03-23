@@ -11,6 +11,15 @@
     "mem_search",
     "mem_save"
   ],
+  "skills_disponibles": [
+    "analizar_impacto",
+    "listar_dependencias_ti",
+    "describir_sentence",
+    "describir_sentence_apisql",
+    "encontrar_usos_bdl_object",
+    "describir_bdl_object",
+    "describir_m4object"
+  ],
   "personalidad": {
     "tono": "conciso",
     "verbosidad": 0.7

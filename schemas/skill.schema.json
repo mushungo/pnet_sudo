@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Esquema para Skills de pnet_sudo",
+  "description": "Define la estructura y validación para el YAML frontmatter de las skills. Cada skill es una especificación (contrato) que documenta una herramienta o capacidad del toolkit.",
+  "type": "object",
+  "properties": {
+    "nombre": {
+      "description": "Nombre único de la skill en snake_case. Debe coincidir con el nombre del fichero sin extensión.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "version": {
+      "description": "Versión semántica de la skill (MAJOR.MINOR.PATCH).",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "descripcion": {
+      "description": "Descripción clara y concisa de lo que hace la skill y cuándo usarla.",
+      "type": "string",
+      "minLength": 10
+    },
+    "parametros": {
+      "description": "Lista de parámetros que la skill espera recibir. Vacía si la skill no requiere parámetros.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/parametro"
+      },
+      "default": []
+    },
+    "herramienta": {
+      "description": "Ruta del módulo Python que implementa la skill (ej: 'tools.bdl.get_bdl_object'). Omitir si la skill es puramente documental o usa herramientas externas.",
+      "type": "string",
+      "pattern": "^tools\\.[a-z_]+\\.[a-z_]+$"
+    }
+  },
+  "required": [
+    "nombre",
+    "version",
+    "descripcion",
+    "parametros"
+  ],
+  "definitions": {
+    "parametro": {
+      "type": "object",
+      "properties": {
+        "nombre": {
+          "description": "Nombre del parámetro tal como se pasa a la herramienta.",
+          "type": "string"
+        },
+        "tipo": {
+          "description": "Tipo de dato del parámetro.",
+          "type": "string",
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "object",
+            "array"
+          ]
+        },
+        "descripcion": {
+          "description": "Descripción del parámetro con ejemplo de uso.",
+          "type": "string"
+        },
+        "requerido": {
+          "description": "Si el parámetro es obligatorio.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "nombre",
+        "tipo",
+        "descripcion",
+        "requerido"
+      ]
+    }
+  }
+}

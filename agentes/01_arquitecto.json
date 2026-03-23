@@ -14,6 +14,12 @@
     "mem_session_end",
     "mem_session_summary"
   ],
+  "skills_disponibles": [
+    "gestionar_memoria",
+    "revision_calidad",
+    "analizar_impacto",
+    "listar_dependencias_ti"
+  ],
   "personalidad": {
     "tono": "profesional",
     "verbosidad": 0.8

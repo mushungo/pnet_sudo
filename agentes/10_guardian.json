@@ -10,6 +10,9 @@
     "mem_context",
     "mem_search"
   ],
+  "skills_disponibles": [
+    "revision_calidad"
+  ],
   "personalidad": {
     "tono": "directo",
     "verbosidad": 0.7

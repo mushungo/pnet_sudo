@@ -1,19 +1,19 @@
 ---
-# Metadata estructurada de la Skill
 nombre: "describir_objeto_ramdl"
 version: "1.0.0"
 descripcion: "Obtiene la definición completa de un Objeto RAMDL (transporte) del repositorio de PeopleNet, incluyendo sus versiones y contenido XML."
-# Parámetros que la skill espera recibir.
 parametros:
   - nombre: "id_object"
     tipo: "string"
     descripcion: "El identificador del objeto RAMDL a describir. Ej: 'ALERT', 'APP_ROLE'."
     requerido: true
+herramienta: "tools.bdl.get_ramdl_object"
 ---
 
-# (Documentación para humanos)
-
 ## Documentación de la Skill: `describir_objeto_ramdl`
+
+### Nota Organizacional
+> La herramienta reside en `tools/bdl/` porque los objetos RAMDL se almacenan en tablas de metadatos de la capa BDL (`M4RDC_RAMDL_OBJECTS`, `M4RDC_RAMDL_OBJEC1`, `M4RDC_RAMDL_VER`). La skill se organiza bajo `04_ramdl/` por afinidad de dominio (RAMDL es el subsistema de transporte de metadatos).
 
 ### Propósito
 Esta skill permite introspeccionar los Objetos RAMDL (RAM-DL Transport Objects) del repositorio de metadatos de PeopleNet. Los objetos RAMDL son las unidades de transporte que la herramienta de traspasos (RAM-DL) usa para mover definiciones y metadatos entre entornos. Hay 199 objetos con múltiples rangos de versión, cada uno con su XML de definición. Las versiones RAMDL cubren desde la v60250 hasta la v99999.

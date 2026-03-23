@@ -13,6 +13,22 @@
     "mem_save",
     "mem_session_summary"
   ],
+  "skills_disponibles": [
+    "describir_bdl_object",
+    "describir_m4object",
+    "describir_funcion_ln4",
+    "describir_conector",
+    "describir_sentence",
+    "describir_sentence_apisql",
+    "describir_rol_aplicacion",
+    "describir_rol_rsm",
+    "describir_usuario",
+    "describir_objeto_ramdl",
+    "describir_workflow",
+    "describir_job",
+    "describir_servicio_rest",
+    "describir_jit_engine"
+  ],
   "personalidad": {
     "tono": "amable",
     "verbosidad": 0.9

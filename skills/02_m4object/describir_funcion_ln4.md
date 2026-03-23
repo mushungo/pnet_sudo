@@ -1,19 +1,19 @@
 ---
-# Metadata estructurada de la Skill
 nombre: "describir_funcion_ln4"
 version: "1.0.0"
 descripcion: "Obtiene la definición completa de una función LN4 del repositorio de PeopleNet, incluyendo sus argumentos, grupo funcional y documentación."
-# Parámetros que la skill espera recibir.
 parametros:
   - nombre: "id_ln4_function"
     tipo: "number"
     descripcion: "El identificador numérico de la función LN4 a describir. Ej: 1, 50, 100."
     requerido: true
+herramienta: "tools.bdl.get_ln4_function"
 ---
 
-# (Documentación para humanos)
-
 ## Documentación de la Skill: `describir_funcion_ln4`
+
+### Nota Organizacional
+> La herramienta reside en `tools/bdl/` porque las funciones LN4 se almacenan en tablas de metadatos de la capa BDL (`M4RCH_LN4_FUNCTION`, `M4RCH_FUNC_GROUPS`, `M4RCH_LN4_FUNC_ARG`). La skill se organiza bajo `02_m4object/` por afinidad de dominio (LN4 es el lenguaje de scripting que opera sobre los m4objects).
 
 ### Propósito
 Esta skill permite introspeccionar las funciones del lenguaje propietario LN4 de PeopleNet. LN4 es el lenguaje de scripting usado en reglas, fórmulas y lógica de negocio dentro de Meta4Objects. Hay 301 funciones organizadas en 21 grupos funcionales (funciones básicas, cadenas, conversión de tipos, matemáticas, fechas, monedas, archivos, registros, BDL, Meta4Objects, nómina, etc.).

@@ -11,6 +11,12 @@
     "mem_context",
     "mem_search"
   ],
+  "skills_disponibles": [
+    "analizar_impacto",
+    "listar_dependencias_ti",
+    "describir_sentence",
+    "encontrar_usos_bdl_object"
+  ],
   "personalidad": {
     "tono": "directo",
     "verbosidad": 0.6

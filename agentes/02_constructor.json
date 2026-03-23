@@ -11,6 +11,15 @@
     "mem_context",
     "mem_search"
   ],
+  "skills_disponibles": [
+    "describir_bdl_object",
+    "describir_m4object",
+    "describir_sentence",
+    "describir_workflow",
+    "describir_job",
+    "describir_servicio_rest",
+    "describir_jit_engine"
+  ],
   "personalidad": {
     "tono": "directo",
     "verbosidad": 0.6

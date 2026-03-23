@@ -12,6 +12,28 @@
     "mem_search",
     "mem_save"
   ],
+  "skills_disponibles": [
+    "describir_bdl_object",
+    "listar_bdl_objects",
+    "describir_m4object",
+    "listar_m4objects",
+    "describir_funcion_ln4",
+    "listar_funciones_ln4",
+    "describir_conector",
+    "listar_conectores",
+    "describir_sentence",
+    "describir_sentence_apisql",
+    "listar_sentences",
+    "describir_usuario",
+    "listar_usuarios",
+    "describir_rol_aplicacion",
+    "listar_roles_aplicacion",
+    "describir_rol_rsm",
+    "listar_roles_rsm",
+    "encontrar_usos_bdl_object",
+    "encontrar_lookup_bdl",
+    "describir_relaciones_bdl"
+  ],
   "personalidad": {
     "tono": "profesional",
     "verbosidad": 0.8

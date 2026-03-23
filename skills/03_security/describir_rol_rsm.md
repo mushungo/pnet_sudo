@@ -1,19 +1,19 @@
 ---
-# Metadata estructurada de la Skill
 nombre: "describir_rol_rsm"
 version: "1.0.0"
 descripcion: "Obtiene la definición completa de un Rol RSM (Role Security Model) de PeopleNet, incluyendo sus permisos sobre objetos lógicos y campos."
-# Parámetros que la skill espera recibir.
 parametros:
   - nombre: "id_rsm"
     tipo: "string"
     descripcion: "El identificador único del Rol RSM a describir. Ej: '_DEFAULT_VALUES', 'ADMIN_COMPENSACION'."
     requerido: true
+herramienta: "tools.bdl.get_rsm_role"
 ---
 
-# (Documentación para humanos)
-
 ## Documentación de la Skill: `describir_rol_rsm`
+
+### Nota Organizacional
+> La herramienta reside en `tools/bdl/` porque los roles RSM se almacenan en tablas de metadatos de la capa BDL (`M4RSC_RSM`, `M4RSC_RSM1`, `M4RDC_SEC_LOBJ`, `M4RDC_SEC_FIELDS`). La skill se organiza bajo `03_security/` por afinidad de dominio (los roles RSM son entidades del modelo de seguridad).
 
 ### Propósito
 Esta skill permite introspeccionar los Roles de Seguridad (RSM - Role Security Model) del repositorio de metadatos de PeopleNet. Los roles RSM definen qué permisos (SELECT, INSERT, UPDATE, DELETE y sus variantes de corrección) tiene cada perfil sobre los objetos lógicos de la BDL. Hay 50 roles con 9,465 permisos sobre objetos y 2 permisos sobre campos específicos.
