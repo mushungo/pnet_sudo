@@ -31,6 +31,7 @@
     "describir_rol_rsm",
     "listar_roles_rsm",
     "encontrar_usos_bdl_object",
+    "encontrar_sentences_por_objeto",
     "encontrar_lookup_bdl",
     "describir_relaciones_bdl"
   ],

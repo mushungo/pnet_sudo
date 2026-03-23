@@ -17,6 +17,7 @@
     "describir_sentence",
     "describir_sentence_apisql",
     "encontrar_usos_bdl_object",
+    "encontrar_sentences_por_objeto",
     "describir_bdl_object",
     "describir_m4object"
   ],

@@ -46,6 +46,7 @@
     "listar_sentences",
     "describir_sentence",
     "describir_sentence_apisql",
+    "encontrar_sentences_por_objeto",
     "listar_workflows",
     "describir_workflow",
     "listar_jobs",

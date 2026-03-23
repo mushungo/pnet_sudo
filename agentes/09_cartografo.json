@@ -15,6 +15,7 @@
     "analizar_impacto",
     "listar_dependencias_ti",
     "encontrar_usos_bdl_object",
+    "encontrar_sentences_por_objeto",
     "encontrar_lookup_bdl",
     "describir_relaciones_bdl",
     "listar_bdl_objects",
