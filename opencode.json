@@ -6,5 +6,11 @@
       "command": ["engram", "mcp"],
       "enabled": true
     }
+  },
+  "lsp": {
+    "ln4": {
+      "command": ["python", "-m", "ln4_lsp"],
+      "extensions": [".ln4"]
+    }
   }
 }

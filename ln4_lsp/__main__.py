@@ -7,15 +7,21 @@
 #   python -m ln4_lsp --tcp --port 9999
 # =============================================================================
 
+import argparse
 import logging
 import sys
 
-from pygls.cli import start_server
 from ln4_lsp.server import server
 
 
 def main():
     """Punto de entrada principal del servidor LSP de LN4."""
+
+    parser = argparse.ArgumentParser(description="LN4 Language Server")
+    parser.add_argument("--tcp", action="store_true", help="Usar transporte TCP en lugar de STDIO")
+    parser.add_argument("--host", default="127.0.0.1", help="Host para TCP (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=2087, help="Puerto para TCP (default: 2087)")
+    args = parser.parse_args()
 
     # Configurar logging — stderr para no interferir con STDIO del LSP
     logging.basicConfig(
@@ -24,7 +30,10 @@ def main():
         stream=sys.stderr,
     )
 
-    start_server(server)
+    if args.tcp:
+        server.start_tcp(args.host, args.port)
+    else:
+        server.start_io()
 
 
 if __name__ == "__main__":

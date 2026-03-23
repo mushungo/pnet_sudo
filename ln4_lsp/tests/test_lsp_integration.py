@@ -20,7 +20,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from lsprotocol import types
-from pygls.lsp.client import LanguageClient
+from pygls.lsp.client import BaseLanguageClient
 
 
 logging.basicConfig(
@@ -38,7 +38,7 @@ async def run_integration_test():
     diagnostics_event = asyncio.Event()
 
     # -- Crear cliente LSP -------------------------------------------------
-    client = LanguageClient("ln4-test-client", "v0.1")
+    client = BaseLanguageClient("ln4-test-client", "v0.1")
 
     @client.feature(types.TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS)
     def on_publish_diagnostics(params: types.PublishDiagnosticsParams):
@@ -112,7 +112,7 @@ async def run_integration_test():
                     version=2,
                 ),
                 content_changes=[
-                    types.TextDocumentContentChangeWholeDocument(
+                    types.TextDocumentContentChangeEvent_Type2(
                         text=good_code,
                     )
                 ],

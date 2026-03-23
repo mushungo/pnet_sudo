@@ -25,8 +25,7 @@ import sys
 import os
 
 from lsprotocol import types
-from pygls.lsp.server import LanguageServer
-from pygls.workspace import TextDocument
+from pygls.server import LanguageServer
 
 from antlr4 import CommonTokenStream, InputStream
 from antlr4.error.ErrorListener import ErrorListener
@@ -243,12 +242,10 @@ class LN4LanguageServer(LanguageServer):
                 )
             ]
 
-        self.text_document_publish_diagnostics(
-            types.PublishDiagnosticsParams(
-                uri=uri,
-                version=doc.version if doc else None,
-                diagnostics=diagnostics,
-            )
+        self.publish_diagnostics(
+            uri,
+            diagnostics=diagnostics,
+            version=doc.version if doc else None,
         )
 
         if diagnostics:
@@ -290,11 +287,9 @@ def did_close(ls: LN4LanguageServer, params: types.DidCloseTextDocumentParams):
     logger.info("Documento cerrado: %s", params.text_document.uri)
     # Limpiar cache de parse tree
     ls._parse_trees.pop(params.text_document.uri, None)
-    ls.text_document_publish_diagnostics(
-        types.PublishDiagnosticsParams(
-            uri=params.text_document.uri,
-            diagnostics=[],
-        )
+    ls.publish_diagnostics(
+        params.text_document.uri,
+        diagnostics=[],
     )
 
 
