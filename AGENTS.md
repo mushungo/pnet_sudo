@@ -206,6 +206,8 @@ Usar nombres descriptivos en `snake_case` que sigan el dominio del proyecto:
 
 *   `pnet/bdl/<nombre_objeto>` — Descubrimientos sobre objetos de la BDL.
 *   `pnet/m4object/<nombre_canal>` — Descubrimientos sobre m4objects/canales.
+*   `pnet/cct/<nombre_cct>` — Descubrimientos sobre Controles de Cambio (CCT).
+*   `pnet/nomina/<nombre_concepto>` — Descubrimientos sobre conceptos de nómina.
 *   `pnet/arquitectura/<concepto>` — Conceptos arquitectónicos de PeopleNet.
 *   `proyecto/decision/<nombre>` — Decisiones de diseño del proyecto.
 *   `proyecto/refactor/<area>` — Notas sobre refactorizaciones realizadas.

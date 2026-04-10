@@ -45,12 +45,16 @@ class ResolvedSymbol:
         start_date: Fecha de inicio de la regla (si aplica).
         arguments: Lista de dicts con argumentos del item (de M4RCH_ITEM_ARGS).
                    Cada dict: {name, position, m4_type, arg_type, precision, scale}.
+        variable_arguments: Si el item acepta argumentos variables adicionales
+                            más allá de los declarados en M4RCH_ITEM_ARGS
+                            (M4RCH_ITEMS.VARIABLE_ARGUMENTS = True).
     """
 
     __slots__ = [
         "name", "kind", "ti_name", "item_name", "channel_name",
         "item_type", "m4_type", "description_esp", "description_eng",
         "source_code", "rule_id", "start_date", "arguments",
+        "variable_arguments",
     ]
 
     def __init__(self, name, kind, **kwargs):
@@ -67,6 +71,7 @@ class ResolvedSymbol:
         self.rule_id = kwargs.get("rule_id")
         self.start_date = kwargs.get("start_date")
         self.arguments = kwargs.get("arguments")
+        self.variable_arguments = kwargs.get("variable_arguments", False)
 
     def __repr__(self):
         parts = [f"{self.kind}:{self.name}"]
@@ -189,7 +194,8 @@ class DBResolver:
                     i.ID_TI, i.ID_ITEM, i.ID_ITEM_TYPE, i.ID_M4_TYPE,
                     i.N_SYNONYMESP, i.N_SYNONYMENG, i.N_ITEM,
                     i.ID_READ_OBJECT, i.ID_WRITE_OBJECT,
-                    i.ID_READ_FIELD, i.ID_WRITE_FIELD
+                    i.ID_READ_FIELD, i.ID_WRITE_FIELD,
+                    i.VARIABLE_ARGUMENTS
                 FROM M4RCH_ITEMS i
                 WHERE i.ID_TI = ? AND i.ID_ITEM = ?
             """, ti_name.upper(), item_name.upper())
@@ -207,6 +213,7 @@ class DBResolver:
                 m4_type=row.ID_M4_TYPE,
                 description_esp=row.N_SYNONYMESP,
                 description_eng=row.N_SYNONYMENG,
+                variable_arguments=bool(row.VARIABLE_ARGUMENTS),
             )
         except Exception as e:
             logger.error("Error resolviendo item %s.%s: %s", ti_name, item_name, e)
@@ -422,7 +429,8 @@ class DBResolver:
             cursor.execute("""
                 SELECT
                     i.ID_TI, i.ID_ITEM, i.ID_ITEM_TYPE, i.ID_M4_TYPE,
-                    i.N_SYNONYMESP, i.N_SYNONYMENG, i.N_ITEM
+                    i.N_SYNONYMESP, i.N_SYNONYMENG, i.N_ITEM,
+                    i.VARIABLE_ARGUMENTS
                 FROM M4RCH_ITEMS i
                 WHERE i.ID_TI = ?
                 ORDER BY i.ITEM_ORDER, i.ID_ITEM
@@ -440,6 +448,7 @@ class DBResolver:
                     m4_type=row.ID_M4_TYPE,
                     description_esp=row.N_SYNONYMESP,
                     description_eng=row.N_SYNONYMENG,
+                    variable_arguments=bool(row.VARIABLE_ARGUMENTS),
                 ))
             return results
 

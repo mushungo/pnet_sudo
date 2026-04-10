@@ -5,12 +5,17 @@ Obtiene los detalles completos de un proceso de workflow (BPC) de PeopleNet.
 Incluye: definición del BPC, estados, transiciones, tareas, definiciones
 de datos, delegaciones, y estadísticas de instancias y work items.
 
+Con --include-instances, detalla las últimas instancias (BPO) y sus
+work items activos en lugar de solo contar.
+
 Uso:
     python -m tools.workflow.get_workflow <ID_BPC>
+    python -m tools.workflow.get_workflow <ID_BPC> --include-instances
 """
 import sys
 import os
 import json
+import argparse
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
@@ -19,7 +24,7 @@ if project_root not in sys.path:
 from tools.general.db_utils import db_connection
 
 
-def get_workflow_details(id_bpc):
+def get_workflow_details(id_bpc, include_instances=False):
     """Obtiene la definición completa de un workflow (BPC).
 
     Consulta: M4RWF_BPC, M4RWF_STATE, M4RWF_TRANSITION, M4RWF_TASK,
@@ -27,6 +32,8 @@ def get_workflow_details(id_bpc):
 
     Args:
         id_bpc: Identificador numérico del BPC.
+        include_instances: Si True, incluye las últimas instancias y
+                           sus work items en lugar de solo contarlos.
 
     Returns:
         dict con la definición completa o estado de error.
@@ -180,21 +187,72 @@ def get_workflow_details(id_bpc):
                     "approle": row.ID_APPROLE,
                 })
 
-            # 7. Conteo de instancias (BPO)
-            cursor.execute(
-                "SELECT COUNT(*) AS total FROM M4RWF_BPO WHERE ID_BPC = ?",
-                id_bpc
-            )
-            count_row = cursor.fetchone()
-            result["instance_count"] = count_row.total if count_row else 0
+            # 7. Instancias (BPO) — detalle o conteo
+            if include_instances:
+                cursor.execute(
+                    "SELECT TOP 50 ID_BPO, ID_STATUS, DT_START, DT_END, "
+                    "ID_CREATOR, ID_ORGANIZATION "
+                    "FROM M4RWF_BPO WHERE ID_BPC = ? "
+                    "ORDER BY DT_START DESC",
+                    id_bpc
+                )
+                result["instances"] = []
+                bpo_ids = []
+                for row in cursor.fetchall():
+                    result["instances"].append({
+                        "id_bpo": row.ID_BPO,
+                        "status": row.ID_STATUS,
+                        "dt_start": str(row.DT_START) if row.DT_START else None,
+                        "dt_end": str(row.DT_END) if row.DT_END else None,
+                        "creator": row.ID_CREATOR,
+                        "organization": row.ID_ORGANIZATION,
+                    })
+                    bpo_ids.append(row.ID_BPO)
+                result["instance_count"] = len(result["instances"])
 
-            # 8. Conteo de work items
-            cursor.execute(
-                "SELECT COUNT(*) AS total FROM M4RWF_WORKITEM WHERE ID_BPC = ?",
-                id_bpc
-            )
-            count_row = cursor.fetchone()
-            result["workitem_count"] = count_row.total if count_row else 0
+                # 8. Work items de esas instancias
+                if bpo_ids:
+                    placeholders = ",".join(["?"] * len(bpo_ids))
+                    cursor.execute(
+                        f"SELECT ID_WORKITEM, ID_BPO, ID_STATE, "
+                        f"ID_RESPONSIBLE, DT_ASSIGN, DT_DEADLINE, "
+                        f"IS_DONE, ID_RESULT "
+                        f"FROM M4RWF_WORKITEM "
+                        f"WHERE ID_BPC = ? AND ID_BPO IN ({placeholders}) "
+                        f"ORDER BY ID_BPO, DT_ASSIGN DESC",
+                        id_bpc, *bpo_ids
+                    )
+                    result["workitems"] = []
+                    for row in cursor.fetchall():
+                        result["workitems"].append({
+                            "id_workitem": row.ID_WORKITEM,
+                            "id_bpo": row.ID_BPO,
+                            "id_state": row.ID_STATE,
+                            "responsible": row.ID_RESPONSIBLE,
+                            "dt_assign": str(row.DT_ASSIGN) if row.DT_ASSIGN else None,
+                            "dt_deadline": str(row.DT_DEADLINE) if row.DT_DEADLINE else None,
+                            "is_done": bool(row.IS_DONE) if row.IS_DONE is not None else None,
+                            "result": row.ID_RESULT,
+                        })
+                    result["workitem_count"] = len(result["workitems"])
+                else:
+                    result["workitems"] = []
+                    result["workitem_count"] = 0
+            else:
+                # Conteo simple (comportamiento original)
+                cursor.execute(
+                    "SELECT COUNT(*) AS total FROM M4RWF_BPO WHERE ID_BPC = ?",
+                    id_bpc
+                )
+                count_row = cursor.fetchone()
+                result["instance_count"] = count_row.total if count_row else 0
+
+                cursor.execute(
+                    "SELECT COUNT(*) AS total FROM M4RWF_WORKITEM WHERE ID_BPC = ?",
+                    id_bpc
+                )
+                count_row = cursor.fetchone()
+                result["workitem_count"] = count_row.total if count_row else 0
 
             return result
 
@@ -203,10 +261,16 @@ def get_workflow_details(id_bpc):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(json.dumps({
-            "status": "error",
-            "message": "Uso: python -m tools.workflow.get_workflow <ID_BPC>"
-        }, indent=2))
-        sys.exit(1)
-    print(json.dumps(get_workflow_details(sys.argv[1]), indent=2, default=str))
+    parser = argparse.ArgumentParser(
+        description="Obtiene la definición completa de un workflow (BPC)."
+    )
+    parser.add_argument("id_bpc", help="Identificador numérico del BPC")
+    parser.add_argument(
+        "--include-instances",
+        action="store_true",
+        help="Incluir detalle de instancias (BPO) y work items"
+    )
+    args = parser.parse_args()
+
+    result = get_workflow_details(args.id_bpc, include_instances=args.include_instances)
+    print(json.dumps(result, indent=2, default=str))

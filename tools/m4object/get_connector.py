@@ -15,12 +15,9 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from tools.general.db_utils import db_connection
-
-
-# Mapeo de tipos
-CONNECTION_TYPE_MAP = {1: "call", 3: "self/bidirectional"}
-PRECEDENCE_TYPE_MAP = {1: "before", 2: "after"}
-CSTYPE_MAP = {2: "execution", 3: "parameter"}
+from tools.m4object.m4object_maps import (
+    CONNECTION_TYPE_MAP, PRECEDENCE_TYPE_MAP, CONNECTOR_CSTYPE_MAP, decode,
+)
 
 
 def get_connector_details(id_t3, id_ti, id_node, id_ti_used, id_node_used):
@@ -62,8 +59,8 @@ def get_connector_details(id_t3, id_ti, id_node, id_ti_used, id_node_used):
                 "id_node": main_row.ID_NODE,
                 "id_ti_used": main_row.ID_TI_USED,
                 "id_node_used": main_row.ID_NODE_USED,
-                "connection_type": CONNECTION_TYPE_MAP.get(
-                    main_row.ID_CONNECTION_TYPE, str(main_row.ID_CONNECTION_TYPE)
+                "connection_type": decode(
+                    main_row.ID_CONNECTION_TYPE, CONNECTION_TYPE_MAP
                 ),
                 "id_sentence": main_row.ID_SENTENCE,
             }
@@ -84,15 +81,15 @@ def get_connector_details(id_t3, id_ti, id_node, id_ti_used, id_node_used):
                 result["items"].append({
                     "id_item": row.ID_ITEM,
                     "id_item_used": row.ID_ITEM_USED,
-                    "precedence": PRECEDENCE_TYPE_MAP.get(
-                        row.ID_PRECEDENCE_TYPE, str(row.ID_PRECEDENCE_TYPE)
+                    "precedence": decode(
+                        row.ID_PRECEDENCE_TYPE, PRECEDENCE_TYPE_MAP
                     ) if row.ID_PRECEDENCE_TYPE else None,
                     "spin_type": row.ID_SPIN_TYPE,
                     "relationship_type": row.ID_RELSHIP_TYPE,
                     "context_type": row.ID_CONTEXT_TYPE,
                     "trigger_mode": row.TRIGGER_MODE,
-                    "cstype": CSTYPE_MAP.get(
-                        row.ID_CSTYPE, str(row.ID_CSTYPE)
+                    "cstype": decode(
+                        row.ID_CSTYPE, CONNECTOR_CSTYPE_MAP
                     ) if row.ID_CSTYPE else None,
                 })
 

@@ -194,7 +194,7 @@ def _build_builtin_signature_help(func, active_param):
 # =============================================================================
 
 def _build_item_signature_help(ti_name, item_name, item_args, active_param,
-                                item_desc=None):
+                                item_desc=None, variable_arguments=False):
     """Construye SignatureHelp para un método de TI desde ITEM_ARGS.
 
     Args:
@@ -203,11 +203,13 @@ def _build_item_signature_help(ti_name, item_name, item_args, active_param,
         item_args: Lista de dicts de argumentos (de resolve_item_args).
         active_param: Índice del parámetro activo (0-based).
         item_desc: Descripción del item (opcional).
+        variable_arguments: Si el item acepta argumentos variables adicionales
+                            más allá de los declarados en ITEM_ARGS.
 
     Returns:
         types.SignatureHelp
     """
-    if not item_args:
+    if not item_args and not variable_arguments:
         # Sin argumentos → firma vacía
         sig_label = f"{ti_name}.{item_name}()"
         return types.SignatureHelp(
@@ -222,7 +224,7 @@ def _build_item_signature_help(ti_name, item_name, item_args, active_param,
     # Construir la firma: TI.Method(arg1: Type, arg2: Type, ...)
     arg_strs = []
     parameters = []
-    for arg in item_args:
+    for arg in (item_args or []):
         name = arg.get("name", "?")
         m4_type = arg.get("m4_type")
         type_name = M4_TYPE_NAMES.get(m4_type, str(m4_type)) if m4_type is not None else "?"
@@ -240,11 +242,24 @@ def _build_item_signature_help(ti_name, item_name, item_args, active_param,
             )
         )
 
+    # Si tiene argumentos variables, agregar un parámetro "..."
+    if variable_arguments:
+        arg_strs.append("...")
+        parameters.append(
+            types.ParameterInformation(
+                label="...",
+                documentation="Argumentos variables",
+            )
+        )
+
     sig_label = f"{ti_name}.{item_name}({', '.join(arg_strs)})"
 
-    # Clamp active_param
+    # Clamp active_param al rango válido
     if parameters:
-        active_param = min(active_param, len(parameters) - 1)
+        if variable_arguments and active_param >= len(parameters) - 1:
+            active_param = len(parameters) - 1
+        else:
+            active_param = min(active_param, len(parameters) - 1)
 
     doc = ""
     if item_desc:
@@ -320,11 +335,12 @@ def get_signature_help(source, line, character):
             resolver = get_resolver()
             if resolver.is_available:
                 item_result = resolver.resolve_item_with_args(ti_name, func_name)
-                if item_result and item_result.arguments:
+                if item_result and (item_result.arguments or item_result.variable_arguments):
                     desc = item_result.description_esp or item_result.description_eng or ""
                     return _build_item_signature_help(
                         ti_name, func_name, item_result.arguments,
                         active_param, item_desc=desc,
+                        variable_arguments=item_result.variable_arguments,
                     )
         except Exception as e:
             logger.debug("Error en signature help para %s.%s: %s", ti_name, func_name, e)

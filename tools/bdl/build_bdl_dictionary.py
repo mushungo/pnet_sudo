@@ -18,6 +18,16 @@ if project_root not in sys.path:
 from tools.general.db_utils import db_connection, safe_filename
 
 
+OBJECT_TYPE_MAP = {
+    1: "table",
+    3: "overflow",
+    4: "view",
+    5: "master_overflow",
+    7: "custom_m4",
+    8: "hash_temp",
+}
+
+
 def fetch_all_metadata(conn):
     """Obtiene todos los metadatos necesarios de la BDL en consultas masivas."""
     cursor = conn.cursor()
@@ -49,12 +59,30 @@ def fetch_all_metadata(conn):
             child_object_id = relations[row.ID_RELATION].ID_OBJECT
             lookup_map[(child_object_id, row.ID_FIELD)] = row.ID_RELATION
 
-    return objects, fields, relations, rel_fields, lookup_map
+    print("Fetching all real objects (physical tables)...")
+    cursor.execute(
+        "SELECT ID_REAL_OBJECT, ID_OBJECT, ID_OBJECT_TYPE, IS_PRINCIPAL "
+        "FROM M4RDC_REAL_OBJECTS;"
+    )
+    real_objects = defaultdict(list)
+    for row in cursor.fetchall():
+        real_objects[row.ID_OBJECT].append(row)
+
+    print("Fetching all real fields (physical columns)...")
+    cursor.execute(
+        "SELECT ID_REAL_OBJECT, ID_REAL_FIELD, ID_FIELD "
+        "FROM M4RDC_REAL_FIELDS;"
+    )
+    real_fields = defaultdict(list)
+    for row in cursor.fetchall():
+        real_fields[row.ID_REAL_OBJECT].append(row)
+
+    return objects, fields, relations, rel_fields, lookup_map, real_objects, real_fields
 
 
 def generate_markdown(obj_id, all_meta):
     """Genera el Markdown para un objeto usando los metadatos precargados."""
-    all_objects, all_fields, all_relations, all_rel_fields, lookup_map = all_meta
+    all_objects, all_fields, all_relations, all_rel_fields, lookup_map, real_objects, real_fields = all_meta
 
     obj_details = all_objects[obj_id]
     description = obj_details.ID_TRANS_OBJESP or obj_details.ID_TRANS_OBJENG
@@ -86,6 +114,24 @@ def generate_markdown(obj_id, all_meta):
             md.append(
                 f"| {is_pk} | {field.POSITION} | `{field.ID_FIELD}` | {type_link} | {is_not_null} | {field_desc} |"
             )
+
+    # --- Tablas Físicas ---
+    phys_tables = real_objects.get(obj_id, [])
+    if phys_tables:
+        md.append("\n## Tablas Físicas\n")
+        for real_obj in sorted(phys_tables, key=lambda x: (not x.IS_PRINCIPAL, x.ID_REAL_OBJECT)):
+            type_label = OBJECT_TYPE_MAP.get(real_obj.ID_OBJECT_TYPE, str(real_obj.ID_OBJECT_TYPE))
+            principal_label = ", principal" if real_obj.IS_PRINCIPAL else ""
+            md.append(f"### `{real_obj.ID_REAL_OBJECT}` ({type_label}{principal_label})\n")
+            cols = real_fields.get(real_obj.ID_REAL_OBJECT, [])
+            if cols:
+                md.append("| ID del Campo (lógico) | Columna SQL (física) |")
+                md.append("|---|---|")
+                for rf in sorted(cols, key=lambda x: x.ID_REAL_FIELD):
+                    diff_marker = " ⚠" if rf.ID_FIELD != rf.ID_REAL_FIELD else ""
+                    md.append(f"| `{rf.ID_FIELD}` | `{rf.ID_REAL_FIELD}`{diff_marker} |")
+            else:
+                md.append("_(sin campos físicos registrados)_")
 
     # --- Relaciones ---
     md.append("\n## Relaciones Lógicas\n")
@@ -127,7 +173,7 @@ def build_dictionary():
     try:
         with db_connection() as conn:
             all_meta = fetch_all_metadata(conn)
-            all_objects, _, _, _, _ = all_meta
+            all_objects, _, _, _, _, _, _ = all_meta
 
             print("\nPaso 2: Generando ficheros Markdown desde la memoria...")
             index_entries = []

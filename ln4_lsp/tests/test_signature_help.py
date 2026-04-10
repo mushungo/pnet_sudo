@@ -416,6 +416,131 @@ def test_item_hover_markdown_method_no_args():
 
 
 # =============================================================================
+# Tests de _build_item_signature_help con variable_arguments
+# =============================================================================
+
+def test_item_signature_help_variable_args():
+    """Signature help para método variadic de TI muestra '...' parameter."""
+    args = [
+        {"name": "Query", "position": 1, "m4_type": 2, "arg_type": 1},
+    ]
+    result = _build_item_signature_help("MY_TI", "MY_METHOD", args, 0,
+                                        variable_arguments=True)
+    assert isinstance(result, types.SignatureHelp)
+    sig = result.signatures[0]
+    assert "MY_TI.MY_METHOD" in sig.label
+    assert "..." in sig.label
+    params = sig.parameters
+    assert any(p.label == "..." for p in params), "Expected '...' parameter"
+    return True
+
+
+def test_item_signature_help_pure_variable_args():
+    """Signature help para método sin args fijos pero variadic (estilo ExecuteSQL de TI)."""
+    result = _build_item_signature_help("MY_TI", "EXEC_QUERY", None, 0,
+                                        variable_arguments=True)
+    assert isinstance(result, types.SignatureHelp)
+    sig = result.signatures[0]
+    assert "EXEC_QUERY" in sig.label
+    assert "..." in sig.label
+    params = sig.parameters
+    assert len(params) == 1
+    assert params[0].label == "..."
+    return True
+
+
+def test_item_signature_help_variable_args_clamp():
+    """Active parameter se fija en '...' cuando el índice excede los args fijos."""
+    args = [
+        {"name": "A", "position": 1, "m4_type": 2, "arg_type": 1},
+    ]
+    # active_param=5 debería quedar en el índice de '...' (posición 1)
+    result = _build_item_signature_help("TI", "M", args, 5, variable_arguments=True)
+    assert isinstance(result, types.SignatureHelp)
+    assert result.active_parameter == 1  # clamped to '...'
+    return True
+
+
+def test_item_signature_help_no_args_variadic_empty_list():
+    """_build_item_signature_help con lista vacía y variable_arguments=True."""
+    result = _build_item_signature_help("TI", "M", [], 0, variable_arguments=True)
+    assert isinstance(result, types.SignatureHelp)
+    sig = result.signatures[0]
+    assert "..." in sig.label
+    return True
+
+
+# =============================================================================
+# Tests de build_item_hover_markdown con variable_arguments
+# =============================================================================
+
+def test_item_hover_markdown_variable_args():
+    """Hover markdown para item variadic muestra '...' en argumentos."""
+    from ln4_lsp.db_resolver import ResolvedSymbol
+    sym = ResolvedSymbol(
+        name="EXEC_QUERY",
+        kind="item",
+        ti_name="MY_TI",
+        item_name="EXEC_QUERY",
+        item_type=4,  # Concept
+        m4_type=7,
+        description_esp="Ejecuta SQL con parámetros variables",
+        arguments=None,
+        variable_arguments=True,
+    )
+    md = build_item_hover_markdown(sym)
+    assert "MY_TI.EXEC_QUERY(...)" in md
+    assert "argumentos variables" in md
+    return True
+
+
+def test_item_hover_markdown_mixed_args_and_varargs():
+    """Hover markdown para item con args fijos + variadic."""
+    from ln4_lsp.db_resolver import ResolvedSymbol
+    sym = ResolvedSymbol(
+        name="MY_VARARGS",
+        kind="item",
+        ti_name="MY_TI",
+        item_name="MY_VARARGS",
+        item_type=1,  # Method
+        m4_type=7,
+        description_esp="Método con args mixtos",
+        arguments=[
+            {"name": "Param1", "m4_type": 2, "arg_type": 1},
+        ],
+        variable_arguments=True,
+    )
+    md = build_item_hover_markdown(sym)
+    assert "Param1" in md
+    assert "..." in md
+    assert "argumentos variables" in md
+    return True
+
+
+# =============================================================================
+# Tests de _build_item_signature_str con variable_arguments
+# =============================================================================
+
+def test_item_signature_str_variable_args():
+    """_build_item_signature_str incluye '...' cuando variable_arguments=True."""
+    from ln4_lsp.completion import _build_item_signature_str
+    result = _build_item_signature_str("MY_METHOD", None, variable_arguments=True)
+    assert result == "MY_METHOD(...)"
+    return True
+
+
+def test_item_signature_str_mixed_variable_args():
+    """_build_item_signature_str muestra args fijos + '...'."""
+    from ln4_lsp.completion import _build_item_signature_str
+    args = [{"name": "X", "m4_type": 6, "arg_type": 1}]
+    result = _build_item_signature_str("MY_METHOD", args, variable_arguments=True)
+    assert "X: Number" in result
+    assert "..." in result
+    return True
+
+
+
+# =============================================================================
 # Main
 # =============================================================================
 def main():
@@ -468,6 +593,16 @@ def main():
         ("Item hover con args", test_item_hover_markdown_with_args),
         ("Item hover sin args", test_item_hover_markdown_no_args),
         ("Item hover método sin args", test_item_hover_markdown_method_no_args),
+
+        # variable_arguments para TI items
+        ("Item signature variadic", test_item_signature_help_variable_args),
+        ("Item signature solo variadic", test_item_signature_help_pure_variable_args),
+        ("Item signature variadic clamp", test_item_signature_help_variable_args_clamp),
+        ("Item signature lista vacía variadic", test_item_signature_help_no_args_variadic_empty_list),
+        ("Item hover variadic", test_item_hover_markdown_variable_args),
+        ("Item hover mixto + variadic", test_item_hover_markdown_mixed_args_and_varargs),
+        ("Item sig str variadic", test_item_signature_str_variable_args),
+        ("Item sig str mixto variadic", test_item_signature_str_mixed_variable_args),
     ]
 
     for name, test_fn in tests:

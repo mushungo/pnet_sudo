@@ -14,12 +14,14 @@ Uso:
 import sys
 import os
 import json
+import time
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from tools.general.db_utils import db_connection
+from tools.general.trace import db_tracer
 
 # Límite máximo de filas por defecto para evitar descargas masivas accidentales
 DEFAULT_MAX_ROWS = 500
@@ -60,6 +62,9 @@ def execute_query(sql_query, params=None, max_rows=DEFAULT_MAX_ROWS):
         with db_connection() as conn:
             cursor = conn.cursor()
 
+            db_tracer.sql(sql_query, params=str(params) if params else "[]", max_rows=max_rows)
+            t0 = time.perf_counter()
+
             if params:
                 cursor.execute(sql_query, *params)
             else:
@@ -81,6 +86,15 @@ def execute_query(sql_query, params=None, max_rows=DEFAULT_MAX_ROWS):
             extra = cursor.fetchone()
             truncated = extra is not None
 
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            db_tracer.info(
+                "Query ejecutada",
+                rows=len(rows),
+                truncated=truncated,
+                elapsed_ms=f"{elapsed_ms:.1f}",
+                columns=len(columns),
+            )
+
             return {
                 "status": "success",
                 "columns": columns,
@@ -90,6 +104,7 @@ def execute_query(sql_query, params=None, max_rows=DEFAULT_MAX_ROWS):
                 "rows": rows,
             }
     except Exception as e:
+        db_tracer.error("Error ejecutando query", error=str(e), query=sql_query[:200])
         return {"status": "error", "message": str(e)}
 
 

@@ -20,6 +20,9 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from tools.general.db_utils import db_connection
+from tools.m4object.m4object_maps import (
+    EXE_TYPE_MAP, STREAM_TYPE_MAP, decode,
+)
 
 
 def list_m4objects(category=None, search=None):
@@ -87,8 +90,10 @@ def list_m4objects(category=None, search=None):
                     "name_eng": row.N_T3ENG,
                     "category": row.ID_CATEGORY,
                     "subcategory": row.ID_SUBCATEGORY,
-                    "stream_type": row.ID_STREAM_TYPE,
-                    "exe_type": row.CS_EXE_TYPE,
+                    "stream_type": decode(row.ID_STREAM_TYPE, STREAM_TYPE_MAP),
+                    "stream_type_id": row.ID_STREAM_TYPE,
+                    "exe_type": decode(row.CS_EXE_TYPE, EXE_TYPE_MAP),
+                    "exe_type_id": row.CS_EXE_TYPE,
                     "has_security": bool(row.HAVE_SECURITY) if row.HAVE_SECURITY is not None else None,
                     "is_external": bool(row.IS_EXTERNAL) if row.IS_EXTERNAL is not None else None,
                     "node_count": row.node_count,

@@ -26,6 +26,9 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from tools.general.db_utils import db_connection, safe_filename
+from tools.m4object.m4object_maps import (
+    EXE_TYPE_MAP, STREAM_TYPE_MAP, NODES_TYPE_MAP, ITEM_CSTYPE_MAP, decode,
+)
 
 
 def fetch_all_metadata(conn):
@@ -113,8 +116,8 @@ def generate_markdown(id_t3, all_meta):
     md = [f"# M4Object: `{id_t3}`\n"]
     md.append(f"**Nombre:** {desc}")
     md.append(f"\n**Categoría:** `{t3.ID_CATEGORY or 'N/A'}` / `{t3.ID_SUBCATEGORY or 'N/A'}`")
-    md.append(f"\n**Stream Type:** `{t3.ID_STREAM_TYPE or 'N/A'}`")
-    md.append(f"\n**Tipo Ejecución:** `{t3.CS_EXE_TYPE or 'N/A'}`")
+    md.append(f"\n**Stream Type:** `{decode(t3.ID_STREAM_TYPE, STREAM_TYPE_MAP) or 'N/A'}`")
+    md.append(f"\n**Tipo Ejecución:** `{decode(t3.CS_EXE_TYPE, EXE_TYPE_MAP) or 'N/A'}`")
 
     flags = []
     if t3.HAVE_SECURITY:
@@ -144,12 +147,14 @@ def generate_markdown(id_t3, all_meta):
         for node in node_list:
             node_name = node.N_NODEESP or node.N_NODEENG or ""
             root_marker = " (ROOT)" if node.IS_ROOT else ""
+            node_type_label = decode(node.NODES_TYPE, NODES_TYPE_MAP) or ""
             md.append(f"### Nodo: `{node.ID_NODE}`{root_marker}\n")
             md.append(f"**Nombre:** {node_name}")
-            md.append(f"| Posición | Tipo | Visible | Afecta BD |")
-            md.append(f"|---|---|---|---|")
+            md.append(f"| Posición | Tipo | Tipo Nodo | Visible | Afecta BD |")
+            md.append(f"|---|---|---|---|---|")
             md.append(
                 f"| {node.POS_NODO or 'N/A'} | `{node.NODES_TYPE or 'N/A'}` "
+                f"| {node_type_label} "
                 f"| {'Sí' if node.IS_VISIBLE else 'No'} "
                 f"| {'Sí' if node.AFFECTS_DB else 'No'} |"
             )
@@ -173,17 +178,18 @@ def generate_markdown(id_t3, all_meta):
                 # Items del TI
                 if ti_items:
                     md.append(f"\n#### Items ({len(ti_items)})\n")
-                    md.append("| Pos | ID Item | Tipo | M4 Type | PK | Visible | Campo Lectura | Descripción |")
-                    md.append("|---|---|---|---|---|---|---|---|")
+                    md.append("| Pos | ID Item | Tipo | M4 Type | PK | Visible | Campo Lectura | CS Type | Descripción |")
+                    md.append("|---|---|---|---|---|---|---|---|---|")
                     for item in ti_items:
                         item_desc = item.N_SYNONYMESP or item.N_SYNONYMENG or ""
                         is_pk = "Sí" if item.IS_PK else ""
                         is_vis = "Sí" if item.IS_VISIBLE else ""
+                        cs_label = decode(item.ID_CSTYPE, ITEM_CSTYPE_MAP) or ""
                         md.append(
                             f"| {item.ITEM_ORDER or ''} | `{item.ID_ITEM}` "
                             f"| `{item.ID_ITEM_TYPE or ''}` | `{item.ID_M4_TYPE or ''}` "
                             f"| {is_pk} | {is_vis} "
-                            f"| `{item.ID_READ_FIELD or ''}` | {item_desc} |"
+                            f"| `{item.ID_READ_FIELD or ''}` | {cs_label} | {item_desc} |"
                         )
             elif node.ID_TI:
                 md.append(f"\n**TI:** `{node.ID_TI}` (no encontrada en M4RCH_TIS)")
@@ -218,8 +224,10 @@ def build_dictionary():
                 t3 = t3s[id_t3]
                 desc = t3.N_T3ESP or t3.N_T3ENG or ""
                 category = t3.ID_CATEGORY or ""
+                stream_label = decode(t3.ID_STREAM_TYPE, STREAM_TYPE_MAP) or ""
+                exe_label = decode(t3.CS_EXE_TYPE, EXE_TYPE_MAP) or ""
                 index_entries.append(
-                    f"| [`{id_t3}`]({safe_name}.md) | {desc} | `{category}` | `{t3.ID_STREAM_TYPE or ''}` |"
+                    f"| [`{id_t3}`]({safe_name}.md) | {desc} | `{category}` | {stream_label} | {exe_label} |"
                 )
 
                 if (i + 1) % 500 == 0 or (i + 1) == len(t3_list):
@@ -235,7 +243,7 @@ def build_dictionary():
         f.write("# Diccionario de M4Objects (Canales)\n\n")
         f.write(f"Generado el {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}. ")
         f.write(f"Contiene **{len(index_entries)}** canales.\n\n")
-        f.write("| ID del Canal | Nombre | Categoría | Stream Type |\n|---|---|---|---|\n")
+        f.write("| ID del Canal | Nombre | Categoría | Stream Type | Modo Ejecución |\n|---|---|---|---|---|\n")
         f.write("\n".join(sorted(index_entries)))
     print(f"-> Creado '{index_path}'")
     print("\n¡Proceso completado!")

@@ -4,13 +4,19 @@ Módulo centralizado de conexión a la base de datos.
 
 Proporciona funciones para crear conexiones a la BD de PeopleNet
 usando las credenciales definidas en el fichero .env del proyecto.
+
+Las operaciones de conexión se trazan automáticamente si Database_trace=1
+en regmeta.xml. Las trazas se escriben en .logs/pnet_sudo.log y .jsonl.
 """
 import os
 import re
+import time
 from contextlib import contextmanager
 
 import pyodbc
 from dotenv import load_dotenv
+
+from tools.general.trace import db_tracer
 
 
 def get_db_connection():
@@ -41,8 +47,19 @@ def get_db_connection():
             "Revisa que el fichero .env contenga DB_SERVER, DB_DATABASE, DB_USERNAME y DB_PASSWORD."
         )
 
-    conn_str = f"DRIVER={db_driver};SERVER={db_server};DATABASE={db_name};UID={db_user};PWD={db_password}"
-    return pyodbc.connect(conn_str)
+    db_tracer.info("Abriendo conexion", server=db_server, database=db_name, user=db_user)
+    t0 = time.perf_counter()
+
+    try:
+        conn_str = f"DRIVER={db_driver};SERVER={db_server};DATABASE={db_name};UID={db_user};PWD={db_password}"
+        conn = pyodbc.connect(conn_str)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        db_tracer.info("Conexion establecida", elapsed_ms=f"{elapsed_ms:.1f}", server=db_server, database=db_name)
+        return conn
+    except Exception as e:
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        db_tracer.error("Fallo de conexion", elapsed_ms=f"{elapsed_ms:.1f}", server=db_server, error=str(e))
+        raise
 
 
 @contextmanager
@@ -63,7 +80,11 @@ def db_connection():
     conn = get_db_connection()
     try:
         yield conn
+    except Exception as e:
+        db_tracer.error("Excepcion durante uso de conexion", error=str(e))
+        raise
     finally:
+        db_tracer.info("Cerrando conexion")
         conn.close()
 
 

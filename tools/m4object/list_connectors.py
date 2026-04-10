@@ -20,13 +20,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from tools.general.db_utils import db_connection
-
-
-# Mapeo de tipos de conexión
-CONNECTION_TYPE_MAP = {
-    1: "call",
-    3: "self/bidirectional",
-}
+from tools.m4object.m4object_maps import CONNECTION_TYPE_MAP, decode
 
 
 def list_connectors(id_t3, id_ti=None, id_node=None):
@@ -88,8 +82,8 @@ def list_connectors(id_t3, id_ti=None, id_node=None):
                     "id_node": row.ID_NODE,
                     "id_ti_used": row.ID_TI_USED,
                     "id_node_used": row.ID_NODE_USED,
-                    "connection_type": CONNECTION_TYPE_MAP.get(
-                        row.ID_CONNECTION_TYPE, str(row.ID_CONNECTION_TYPE)
+                    "connection_type": decode(
+                        row.ID_CONNECTION_TYPE, CONNECTION_TYPE_MAP
                     ),
                     "id_sentence": row.ID_SENTENCE,
                     "item_count": row.item_count,

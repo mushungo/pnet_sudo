@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  regmeta.xml - Configuracion de trazas para pnet_sudo
+  
+  Cada <trace> define una categoria de trazas que se puede activar (value="1")
+  o desactivar (value="0") independientemente.
+  
+  Atributos:
+    name   : Nombre de la variable de traza (usado en el codigo)
+    value  : 1 = activada, 0 = desactivada
+    desc   : Descripcion de que se traza
+  
+  Las trazas se escriben en .logs/ con doble salida:
+    - .log  : Texto plano con timestamps (legible, grepable)
+    - .jsonl: JSON lines (estructurado, para analisis programatico)
+-->
+<regmeta>
+  <traces>
+    <trace name="Database_trace" value="0" desc="Seguimiento de operaciones con base de datos: queries, conexiones, tiempos"/>
+    <!-- 
+    Categorias futuras (descomentar cuando se necesiten):
+    <trace name="CCT_trace"      value="0" desc="Operaciones de la Change Control Tool"/>
+    <trace name="LSP_trace"      value="0" desc="Operaciones del servidor LN4 LSP"/>
+    <trace name="Tool_trace"     value="0" desc="Ejecucion de herramientas Python (params, resultados, timing)"/>
+    -->
+  </traces>
+</regmeta>

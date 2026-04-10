@@ -11,8 +11,10 @@ jerárquica de un m4object:
     └─ Nodos (NODES)
          └─ TI (Technical Instance)
               ├─ Items (campos/métodos)
-              │    └─ Argumentos (ITEM_ARGS)
-              └─ Reglas (RULES) — conteo y resumen
+              │    └─ Argumentos de métodos (ITEM_ARGS) — siempre incluidos
+              ├─ Conceptos (CONCEPTS) — siempre incluidos
+              └─ Reglas (RULES)
+                   └─ Código fuente LN4 (RULES3) — con --include-rules
 
 Uso:
     python -m tools.m4object.get_m4object "ABC"
@@ -28,6 +30,9 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from tools.general.db_utils import db_connection
+from tools.m4object.m4object_maps import (
+    EXE_TYPE_MAP, STREAM_TYPE_MAP, ITEM_CSTYPE_MAP, NODES_TYPE_MAP, decode,
+)
 
 
 def _fetch_t3_header(cursor, id_t3):
@@ -48,14 +53,16 @@ def _fetch_t3_header(cursor, id_t3):
         "id_t3": row.ID_T3,
         "name_esp": row.N_T3ESP,
         "name_eng": row.N_T3ENG,
-        "stream_type": row.ID_STREAM_TYPE,
+        "stream_type": decode(row.ID_STREAM_TYPE, STREAM_TYPE_MAP),
+        "stream_type_id": row.ID_STREAM_TYPE,
         "category": row.ID_CATEGORY,
         "subcategory": row.ID_SUBCATEGORY,
         "has_security": bool(row.HAVE_SECURITY) if row.HAVE_SECURITY is not None else None,
         "is_cacheable": bool(row.IS_CACHEABLE) if row.IS_CACHEABLE is not None else None,
         "is_external": bool(row.IS_EXTERNAL) if row.IS_EXTERNAL is not None else None,
         "is_separable": bool(row.IS_SEPARABLE) if row.IS_SEPARABLE is not None else None,
-        "exe_type": row.CS_EXE_TYPE,
+        "exe_type": decode(row.CS_EXE_TYPE, EXE_TYPE_MAP),
+        "exe_type_id": row.CS_EXE_TYPE,
         "creation_type": row.CREATION_TYPE,
         "service": row.ID_SERVICE,
         "org_type": row.ID_ORG_TYPE,
@@ -154,7 +161,8 @@ def _fetch_nodes_with_tis(cursor, id_t3):
             "autoload": bool(r.AUTOLOAD) if r.AUTOLOAD is not None else None,
             "unique_row": bool(r.UNIQUE_ROW) if r.UNIQUE_ROW is not None else None,
             "num_rows": r.NUM_ROWS,
-            "node_type": r.NODES_TYPE,
+            "node_type": decode(r.NODES_TYPE, NODES_TYPE_MAP),
+            "node_type_id": r.NODES_TYPE,
             "is_visible": bool(r.IS_VISIBLE) if r.IS_VISIBLE is not None else None,
             "affects_db": bool(r.AFFECTS_DB) if r.AFFECTS_DB is not None else None,
             "dmd": r.ID_DMD,
@@ -226,7 +234,8 @@ def _fetch_items_for_tis(cursor, ti_ids):
             "precision": r.PREC,
             "scale": r.SCALE,
             "internal_type": r.ID_INTERNAL_TYPE,
-            "cs_type": r.ID_CSTYPE,
+            "cs_type": decode(r.ID_CSTYPE, ITEM_CSTYPE_MAP),
+            "cs_type_id": r.ID_CSTYPE,
             "item_name": r.N_ITEM,
         }
         items_by_ti.setdefault(r.ID_TI, []).append(item)
@@ -288,12 +297,110 @@ def _fetch_rules_summary(cursor, ti_ids):
     return rules_by_ti
 
 
+def _fetch_item_args_for_tis(cursor, ti_ids):
+    """Obtiene los argumentos de métodos para un conjunto de TIs (M4RCH_ITEM_ARGS).
+
+    Solo aplica a items de tipo 3 (Method). Devuelve un dict
+    {(id_ti, id_item): [args]}.
+    """
+    if not ti_ids:
+        return {}
+
+    placeholders = ",".join(["?"] * len(ti_ids))
+    cursor.execute(f"""
+        SELECT
+            ID_TI, ID_ITEM, ID_ARGUMENT, POSITION,
+            ID_M4_TYPE, ID_ARGUMENT_TYPE
+        FROM M4RCH_ITEM_ARGS
+        WHERE ID_TI IN ({placeholders})
+        ORDER BY ID_TI, ID_ITEM, POSITION
+    """, *ti_ids)
+    rows = cursor.fetchall()
+
+    args_by_key = {}
+    for r in rows:
+        arg = {
+            "id_argument": r.ID_ARGUMENT,
+            "position": r.POSITION,
+            "m4_type": r.ID_M4_TYPE,
+            "argument_type": r.ID_ARGUMENT_TYPE,
+            "is_output": r.ID_ARGUMENT_TYPE == 2,
+        }
+        args_by_key.setdefault((r.ID_TI, r.ID_ITEM), []).append(arg)
+    return args_by_key
+
+
+def _fetch_rules_source_for_tis(cursor, ti_ids):
+    """Obtiene el código fuente LN4 de las reglas (M4RCH_RULES3).
+
+    Solo se usa con --include-rules. Devuelve un dict
+    {(id_ti, id_item): source_code}. El código se trunca a 3000 chars.
+    """
+    if not ti_ids:
+        return {}
+
+    placeholders = ",".join(["?"] * len(ti_ids))
+    cursor.execute(f"""
+        SELECT ID_TI, ID_ITEM, SOURCE_CODE
+        FROM M4RCH_RULES3
+        WHERE ID_TI IN ({placeholders})
+          AND SOURCE_CODE IS NOT NULL
+        ORDER BY ID_TI, ID_ITEM
+    """, *ti_ids)
+    rows = cursor.fetchall()
+
+    source_by_key = {}
+    for r in rows:
+        source = r.SOURCE_CODE
+        if source and len(source) > 3000:
+            source = source[:3000] + "\n... [truncated]"
+        source_by_key[(r.ID_TI, r.ID_ITEM)] = source
+    return source_by_key
+
+
+def _fetch_concepts_for_tis(cursor, ti_ids):
+    """Obtiene los conceptos de nómina por TI (M4RCH_CONCEPTS).
+
+    Devuelve un dict {id_ti: [concepts]}.
+    """
+    if not ti_ids:
+        return {}
+
+    placeholders = ",".join(["?"] * len(ti_ids))
+    try:
+        cursor.execute(f"""
+            SELECT
+                ID_TI, ID_CONCEPT, ID_ITEM, CONCEPT_TYPE,
+                CONCEPT_SCOPE, IS_SYSTEM
+            FROM M4RCH_CONCEPTS
+            WHERE ID_TI IN ({placeholders})
+            ORDER BY ID_TI, ID_CONCEPT
+        """, *ti_ids)
+        rows = cursor.fetchall()
+    except Exception:
+        # Tabla puede no existir en todas las instalaciones
+        return {}
+
+    concepts_by_ti = {}
+    for r in rows:
+        concept = {
+            "id_concept": r.ID_CONCEPT,
+            "id_item": r.ID_ITEM,
+            "concept_type": r.CONCEPT_TYPE,
+            "concept_scope": r.CONCEPT_SCOPE,
+            "is_system": bool(r.IS_SYSTEM) if r.IS_SYSTEM is not None else None,
+        }
+        concepts_by_ti.setdefault(r.ID_TI, []).append(concept)
+    return concepts_by_ti
+
+
 def get_m4object_details(id_t3, include_rules=False):
     """Obtiene los detalles completos de un m4object a partir de su ID_T3.
 
     Args:
         id_t3: Identificador del m4object (canal) a consultar.
-        include_rules: Si True, incluye el detalle de reglas por TI.
+        include_rules: Si True, incluye el detalle de reglas por TI
+                       y el código fuente LN4 (M4RCH_RULES3).
 
     Returns:
         dict con la estructura jerárquica completa del canal.
@@ -328,20 +435,52 @@ def get_m4object_details(id_t3, include_rules=False):
             # 6) Items por TI
             items_by_ti = _fetch_items_for_tis(cursor, ti_ids)
 
-            # 7) Reglas (conteo siempre, detalle si se pide)
-            rules_count = _fetch_rules_count_for_tis(cursor, ti_ids)
-            rules_detail = _fetch_rules_summary(cursor, ti_ids) if include_rules else {}
+            # 7) Argumentos de métodos (siempre)
+            item_args = _fetch_item_args_for_tis(cursor, ti_ids)
 
-            # Ensamblar: vincular items y reglas a cada TI en los nodos
+            # 8) Conceptos de nómina (siempre)
+            concepts_by_ti = _fetch_concepts_for_tis(cursor, ti_ids)
+
+            # 9) Reglas (conteo siempre, detalle + fuente si se pide)
+            rules_count = _fetch_rules_count_for_tis(cursor, ti_ids)
+            rules_detail = {}
+            rules_source = {}
+            if include_rules:
+                rules_detail = _fetch_rules_summary(cursor, ti_ids)
+                rules_source = _fetch_rules_source_for_tis(cursor, ti_ids)
+
+            # Ensamblar: vincular items, args, conceptos y reglas a cada TI
             for node in nodes:
                 if node["ti"]:
                     ti_id = node["ti"]["id_ti"]
-                    node["ti"]["items"] = items_by_ti.get(ti_id, [])
+
+                    # Items con argumentos de métodos incrustados
+                    ti_items = items_by_ti.get(ti_id, [])
+                    for item in ti_items:
+                        if item["item_type"] == 3:  # Method
+                            args = item_args.get((ti_id, item["id_item"]))
+                            if args:
+                                item["arguments"] = args
+                    node["ti"]["items"] = ti_items
+
+                    # Conceptos
+                    ti_concepts = concepts_by_ti.get(ti_id, [])
+                    if ti_concepts:
+                        node["ti"]["concepts"] = ti_concepts
+
+                    # Reglas
                     node["ti"]["rules_count"] = rules_count.get(ti_id, 0)
                     if include_rules:
-                        node["ti"]["rules"] = rules_detail.get(ti_id, [])
+                        ti_rules = rules_detail.get(ti_id, [])
+                        # Enriquecer cada regla con su código fuente
+                        for rule in ti_rules:
+                            source = rules_source.get((ti_id, rule["id_item"]))
+                            if source:
+                                rule["source_code"] = source
+                        node["ti"]["rules"] = ti_rules
 
             # Construir resultado
+            total_concepts = sum(len(concepts_by_ti.get(ti, [])) for ti in ti_ids)
             result = {
                 "status": "success",
                 **header,
@@ -350,6 +489,7 @@ def get_m4object_details(id_t3, include_rules=False):
                     "node_count": len(nodes),
                     "ti_count": len(ti_ids),
                     "total_items": sum(len(items_by_ti.get(ti, [])) for ti in ti_ids),
+                    "total_concepts": total_concepts,
                     "total_rules": sum(rules_count.get(ti, 0) for ti in ti_ids),
                 },
             }

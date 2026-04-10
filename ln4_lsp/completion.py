@@ -374,13 +374,16 @@ def build_item_hover_markdown(resolved_symbol, item_type_names=None):
     lines = []
 
     # Firma con argumentos si están disponibles
-    if args:
+    var_args_flag = getattr(resolved_symbol, "variable_arguments", False)
+    if args or var_args_flag:
         arg_strs = []
-        for arg in args:
+        for arg in (args or []):
             name = arg.get("name", "?")
             m4_type = arg.get("m4_type")
             type_name = M4_TYPE_NAMES.get(m4_type, str(m4_type)) if m4_type is not None else "?"
             arg_strs.append(f"{name}: {type_name}")
+        if var_args_flag:
+            arg_strs.append("...")
         sig = f"{ti}.{item}({', '.join(arg_strs)})"
     else:
         sig = f"{ti}.{item}"
@@ -396,10 +399,11 @@ def build_item_hover_markdown(resolved_symbol, item_type_names=None):
         lines.append(f"**Description**: {desc_eng}")
 
     # Detalles de argumentos
-    if args:
+    var_args = getattr(resolved_symbol, "variable_arguments", False)
+    if args or var_args:
         lines.append("")
         lines.append("**Argumentos:**")
-        for arg in args:
+        for arg in (args or []):
             name = arg.get("name", "?")
             m4_type = arg.get("m4_type")
             type_name = M4_TYPE_NAMES.get(m4_type, str(m4_type)) if m4_type is not None else "?"
@@ -408,6 +412,8 @@ def build_item_hover_markdown(resolved_symbol, item_type_names=None):
             if arg_type == 2:
                 suffix = " *(output)*"
             lines.append(f"- `{name}: {type_name}`{suffix}")
+        if var_args:
+            lines.append("- `...` (argumentos variables)")
 
     # Tipo M4 del item
     m4_type = resolved_symbol.m4_type
@@ -466,7 +472,7 @@ _ITEM_TYPE_TO_COMPLETION_KIND = {
 }
 
 
-def _build_item_signature_str(item_name, args):
+def _build_item_signature_str(item_name, args, variable_arguments=False):
     """Construye la firma de un item con sus argumentos.
 
     Args:
@@ -474,19 +480,22 @@ def _build_item_signature_str(item_name, args):
         args: Lista de dicts de argumentos (de ITEM_ARGS), o None.
 
     Returns:
-        String con la firma, ej. "MyMethod(arg1: VarChar, arg2: Number)".
+        String con la firma, ej. "MyMethod(arg1: VarChar, arg2: Number, ...)".
     """
-    if not args:
+    if not args and not variable_arguments:
         return f"{item_name}()"
 
     arg_strs = []
-    for arg in args:
+    for arg in (args or []):
         name = arg.get("name", "?")
         m4_type = arg.get("m4_type")
         type_name = M4_TYPE_NAMES.get(m4_type, str(m4_type)) if m4_type is not None else "?"
         arg_type = arg.get("arg_type")
         suffix = " [out]" if arg_type == 2 else ""
         arg_strs.append(f"{name}: {type_name}{suffix}")
+
+    if variable_arguments:
+        arg_strs.append("...")
 
     return f"{item_name}({', '.join(arg_strs)})"
 
@@ -558,10 +567,11 @@ def _build_item_documentation(resolved_symbol):
     elif desc_eng:
         lines.append(desc_eng)
 
-    if args:
+    var_args = getattr(resolved_symbol, "variable_arguments", False)
+    if args or var_args:
         lines.append("")
         lines.append("**Args:**")
-        for arg in args:
+        for arg in (args or []):
             name = arg.get("name", "?")
             m4_type = arg.get("m4_type")
             type_name = M4_TYPE_NAMES.get(m4_type, str(m4_type)) if m4_type is not None else "?"
@@ -569,6 +579,8 @@ def _build_item_documentation(resolved_symbol):
             if arg.get("arg_type") == 2:
                 suffix = " *(out)*"
             lines.append(f"- `{name}: {type_name}`{suffix}")
+        if var_args:
+            lines.append("- `...` (argumentos variables)")
 
     m4_type = resolved_symbol.m4_type
     if m4_type is not None:
@@ -610,7 +622,8 @@ def get_contextual_completion(ti_name):
             # Firma para detail
             if resolved.item_type == 1:  # Method
                 detail = _build_item_signature_str(
-                    resolved.item_name, resolved.arguments
+                    resolved.item_name, resolved.arguments,
+                    variable_arguments=getattr(resolved, "variable_arguments", False),
                 )
             else:
                 type_label = {
