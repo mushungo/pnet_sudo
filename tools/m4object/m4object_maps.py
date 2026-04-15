@@ -7,6 +7,8 @@ Fuente: tablas de lookup del repositorio de metadatos de PeopleNet.
   - M4RCH_LU_STREAM_TP  -> ID_STREAM_TYPE
   - M4RCH_LU_CSTYPE     -> ID_CSTYPE (de items)
   - M4RCH_LU_NODES_TP   -> NODES_TYPE
+  - M4RCH_LU_SLCBHV_TP  -> ID_SLICE_BHVR_TYPE
+  - M4RCH_LU_SLC_SPLTP  -> ID_SLICE_SPLIT_TP
 """
 
 
@@ -122,6 +124,24 @@ PRECEDENCE_TYPE_MAP = {
 CONNECTOR_CSTYPE_MAP = {
     2: "execution",
     3: "parameter",
+}
+
+
+# --- ID_SLICE_BHVR_TYPE (M4RCH_ITEMS / M4RCH_DMD_COMPNTS) -> Tipo de comportamiento de tramo ---
+SLICE_BHVR_TYPE_MAP = {
+    1: "Valor base",
+    2: "Valor final",
+    3: "Unidad",
+    4: "Incidencia",
+    5: "Valor final por periodo",
+}
+
+
+# --- ID_SLICE_SPLIT_TP (M4RCH_ITEMS) -> Tipo de partición de tramo ---
+SLICE_SPLIT_TYPE_MAP = {
+    1: "Lineal",
+    2: "No lineal",
+    3: "Sin tramos",
 }
 
 

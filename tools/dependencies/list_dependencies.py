@@ -11,6 +11,7 @@ Uso:
 import sys
 import os
 import json
+import argparse
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if project_root not in sys.path:
@@ -122,10 +123,10 @@ def list_dependencies(id_ti):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(json.dumps({
-            "status": "error",
-            "message": "Uso: python -m tools.dependencies.list_dependencies \"ID_TI\""
-        }, indent=2))
-        sys.exit(1)
-    print(json.dumps(list_dependencies(sys.argv[1]), indent=2, default=str))
+    parser = argparse.ArgumentParser(
+        description="Lista un resumen de dependencias por item para un TI completo."
+    )
+    parser.add_argument("id_ti", help="Identificador del TI a analizar")
+    args = parser.parse_args()
+
+    print(json.dumps(list_dependencies(args.id_ti), indent=2, default=str))

@@ -23,14 +23,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from tools.general.db_utils import db_connection
-
-
-# Mapeo de tipos de dependencia
-DEPENDENCE_TYPE_MAP = {
-    1: "call",
-    2: "read",
-    3: "write",
-}
+from tools.dependencies.dependency_maps import DEPENDENCE_TYPE_MAP
 
 
 def find_dependents(id_ti, id_item, direction="dependents"):

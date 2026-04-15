@@ -421,14 +421,42 @@ def build_item_hover_markdown(resolved_symbol, item_type_names=None):
         m4_name = M4_TYPE_NAMES.get(m4_type, str(m4_type))
         lines.append(f"\n**Tipo M4**: {m4_name}")
 
+    # Objeto BDL asociado (si se pasa como argumento adicional)
+    bdl_object = getattr(resolved_symbol, "_bdl_object", None)
+    if bdl_object is not None:
+        lines.append("")
+        lines.append("---")
+        lines.append(f"**Objeto BDL**: `{bdl_object.object_id}`")
+        if bdl_object.description_esp:
+            lines.append(f"**Descripción**: {bdl_object.description_esp}")
+        if bdl_object.real_object:
+            lines.append(f"**Tabla física**: `{bdl_object.real_object}`")
+        if bdl_object.fields:
+            lines.append("")
+            lines.append("**Campos** (primeros 10):")
+            for f in bdl_object.fields:
+                fid = f.get("id_field", "?")
+                fdesc = f.get("description_esp", "")
+                freal = f.get("real_field", "")
+                m4t = f.get("m4_type")
+                type_label = M4_TYPE_NAMES.get(m4t, str(m4t)) if m4t is not None else ""
+                parts_f = [f"`{fid}`"]
+                if fdesc:
+                    parts_f.append(fdesc)
+                if freal and freal != fid:
+                    parts_f.append(f"→ `{freal}`")
+                if type_label:
+                    parts_f.append(f"({type_label})")
+                lines.append(f"- {' '.join(parts_f)}")
+
     return "\n".join(lines)
 
 
 def get_hover_for_item(ti_name, item_name):
-    """Genera hover para un item de TI, consultando la BD para args.
+    """Genera hover para un item de TI, consultando la BD para args y BDL.
 
-    Combina resolve_item_with_args para obtener el item y sus argumentos
-    en una sola operación.
+    Combina resolve_item_with_args + resolve_bdl_for_item para obtener el
+    item con sus argumentos y el objeto BDL asociado (si existe).
 
     Args:
         ti_name: Nombre del TI.
@@ -446,6 +474,12 @@ def get_hover_for_item(ti_name, item_name):
         result = resolver.resolve_item_with_args(ti_name, item_name)
         if result is None:
             return None
+
+        # Adjuntar BDL object si existe (solo para Fields — item_type 3)
+        if result.item_type == 3:
+            bdl = resolver.resolve_bdl_for_item(ti_name, item_name)
+            if bdl is not None:
+                result._bdl_object = bdl
 
         md = build_item_hover_markdown(result)
         return types.Hover(
@@ -668,3 +702,78 @@ def get_contextual_completion(ti_name):
     except Exception as e:
         logger.debug("Error en completion contextual para TI %s: %s", ti_name, e)
         return []
+
+
+# =============================================================================
+# Hover para sentences — resolución desde BD
+# =============================================================================
+
+def get_hover_for_sentence(sentence_id):
+    """Genera hover para una sentence LN4 (Load_Blk, SYS_SENTENCE, etc.).
+
+    Consulta la BD vía resolve_sentence() para obtener metadatos, APISQL
+    compilado y objetos BDL referenciados.
+
+    Args:
+        sentence_id: Identificador de la sentence (string).
+
+    Returns:
+        types.Hover o None si no se puede resolver o la BD no está disponible.
+    """
+    try:
+        from ln4_lsp.db_resolver import get_resolver
+        resolver = get_resolver()
+        if not resolver.is_available:
+            return None
+
+        result = resolver.resolve_sentence(sentence_id)
+        if result is None:
+            return None
+
+        lines = []
+
+        # Cabecera
+        lines.append(f"```ln4\nSentence: {result.sentence_id}\n```")
+
+        if result.description_esp:
+            lines.append(f"**Descripción**: {result.description_esp}")
+        if result.description_eng and result.description_eng != result.description_esp:
+            lines.append(f"**Description**: {result.description_eng}")
+
+        if result.is_distinct:
+            lines.append("**DISTINCT**: Sí")
+
+        # Objetos BDL referenciados
+        if result.objects:
+            lines.append("")
+            lines.append("**Objetos BDL:**")
+            for obj in result.objects:
+                alias = obj.get("alias", "")
+                oid = obj.get("id_object", "?")
+                is_basis = obj.get("is_basis", False)
+                basis_marker = " *(base)*" if is_basis else ""
+                if alias and alias != oid:
+                    lines.append(f"- `{oid}` AS `{alias}`{basis_marker}")
+                else:
+                    lines.append(f"- `{oid}`{basis_marker}")
+
+        # SQL compilado (truncado a 800 chars para no saturar el hover)
+        if result.apisql:
+            sql_preview = result.apisql[:800]
+            if len(result.apisql) > 800:
+                sql_preview += "\n…(truncado)"
+            lines.append("")
+            lines.append("**APISQL:**")
+            lines.append(f"```sql\n{sql_preview}\n```")
+
+        md = "\n".join(lines)
+        return types.Hover(
+            contents=types.MarkupContent(
+                kind=types.MarkupKind.Markdown,
+                value=md,
+            )
+        )
+
+    except Exception as e:
+        logger.debug("Error en hover para sentence %s: %s", sentence_id, e)
+        return None

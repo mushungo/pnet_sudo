@@ -38,7 +38,7 @@ if project_root not in sys.path:
 from ln4_lsp.generated.LN4Lexer import LN4Lexer
 from ln4_lsp.generated.LN4Parser import LN4Parser
 from ln4_lsp.semantic import analyze_semantics, SEVERITY_ERROR, SEVERITY_WARNING, SEVERITY_INFO
-from ln4_lsp.completion import get_completion_items, get_hover_for_word, get_hover_for_item, get_contextual_completion
+from ln4_lsp.completion import get_completion_items, get_hover_for_word, get_hover_for_item, get_hover_for_sentence, get_contextual_completion
 from ln4_lsp.definition import resolve_definition
 from ln4_lsp.signature_help import get_signature_help
 
@@ -365,7 +365,8 @@ def hover(
 
     Prioridad:
       1. Funciones built-in, constantes, keywords (catálogo local)
-      2. TI items con argumentos (BD, M4RCH_ITEMS + M4RCH_ITEM_ARGS)
+      2. Sentences (Load_Blk, Load_Prg, SYS_SENTENCE) — desde BD
+      3. TI items con argumentos (BD, M4RCH_ITEMS + M4RCH_ITEM_ARGS + BDL)
     """
     try:
         doc = ls.workspace.get_text_document(params.text_document.uri)
@@ -383,7 +384,31 @@ def hover(
         logger.debug("Hover para '%s': built-in encontrado", word)
         return result
 
-    # 2. TI item hover (buscar patrón TI.ITEM en la línea)
+    # 2. Sentence hover — detectar si la palabra es un argumento de
+    #    Load_Blk(), Load_Prg() o SYS_SENTENCE()
+    try:
+        line_text = doc.source.split("\n")[params.position.line]
+        import re
+        # Patrón: Load_Blk("SENTENCE_ID") / Load_Prg("SENTENCE_ID") /
+        #         SYS_SENTENCE("SENTENCE_ID") — la palabra bajo el cursor
+        #         puede estar entre comillas o no (identificador sin comillas)
+        sentence_pattern = re.compile(
+            r'(?:Load_Blk|Load_Prg|SYS_SENTENCE)\s*\(\s*["\']?(\w+)["\']?',
+            re.IGNORECASE,
+        )
+        for m in sentence_pattern.finditer(line_text):
+            col = params.position.character
+            # Verificar que el cursor está dentro del argumento capturado
+            if m.start(1) <= col <= m.end(1):
+                sentence_id = m.group(1)
+                sentence_result = get_hover_for_sentence(sentence_id)
+                if sentence_result:
+                    logger.debug("Hover para '%s': sentence encontrada", sentence_id)
+                    return sentence_result
+    except Exception as e:
+        logger.debug("Error en hover sentence para '%s': %s", word, e)
+
+    # 3. TI item hover (buscar patrón TI.ITEM en la línea)
     try:
         line_text = doc.source.split("\n")[params.position.line]
         col = params.position.character

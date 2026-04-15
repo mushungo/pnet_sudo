@@ -15,6 +15,7 @@ parametros:
     tipo: "string"
     descripcion: "Dirección: 'dependents' (quién depende de mí), 'uses' (de quién dependo), 'both'. Default: dependents."
     requerido: false
+herramienta: "tools.dependencies.find_dependents"
 ---
 
 ## Documentación de la Skill: `analizar_impacto`

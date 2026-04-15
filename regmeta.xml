@@ -16,7 +16,7 @@
 -->
 <regmeta>
   <traces>
-    <trace name="Database_trace" value="0" desc="Seguimiento de operaciones con base de datos: queries, conexiones, tiempos"/>
+    <trace name="Database_trace" value="1" desc="Seguimiento de operaciones con base de datos: queries, conexiones, tiempos"/>
     <!-- 
     Categorias futuras (descomentar cuando se necesiten):
     <trace name="CCT_trace"      value="0" desc="Operaciones de la Change Control Tool"/>

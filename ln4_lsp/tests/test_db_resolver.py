@@ -15,6 +15,10 @@ Verifica:
   - find_tis_for_channel: lista TIs de un canal
   - resolve_item_args: obtiene argumentos de un item
   - resolve_item_with_args: item + argumentos combinados
+  - resolve_sentence: metadatos + APISQL de una sentence
+  - list_sentences_for_object: sentences que referencian un objeto BDL
+  - resolve_bdl_object: cabecera + campos de un objeto BDL lógico
+  - resolve_bdl_for_item: objeto BDL asociado a un item de TI
 
 Uso:
     python -m ln4_lsp.tests.test_db_resolver
@@ -27,7 +31,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from ln4_lsp.db_resolver import DBResolver, ResolvedSymbol, reset_resolver
+from ln4_lsp.db_resolver import DBResolver, ResolvedSymbol, ResolvedSentence, ResolvedBDLObject, reset_resolver
 
 
 # =============================================================================
@@ -386,6 +390,111 @@ def test_list_ti_items_with_args_empty(resolver):
 
 
 # =============================================================================
+# Tests: resolve_sentence, list_sentences_for_object, resolve_bdl_object,
+#        resolve_bdl_for_item
+# =============================================================================
+
+# -- Test: resolve_sentence con sentence conocida --
+def test_resolve_sentence_known(resolver):
+    conn = resolver._get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT TOP 1 ID_SENTENCE FROM M4RCH_SENTENCES")
+    row = cursor.fetchone()
+    assert row is not None, "No sentences found in database"
+    sentence_id = row.ID_SENTENCE
+
+    result = resolver.resolve_sentence(sentence_id)
+    assert result is not None, f"Expected to resolve sentence '{sentence_id}'"
+    assert isinstance(result, ResolvedSentence), "Expected ResolvedSentence instance"
+    assert result.sentence_id.upper() == sentence_id.upper()
+    assert isinstance(result.objects, list), "Expected objects to be a list"
+
+
+# -- Test: resolve_sentence con sentence inexistente --
+def test_resolve_sentence_unknown(resolver):
+    result = resolver.resolve_sentence("ZZZZZ_NONEXISTENT_SENTENCE_99999")
+    assert result is None, "Expected None for nonexistent sentence"
+
+
+# -- Test: list_sentences_for_object con objeto conocido --
+def test_list_sentences_for_object_known(resolver):
+    conn = resolver._get_connection()
+    cursor = conn.cursor()
+    # Buscar un objeto BDL que esté referenciado al menos en una sentence
+    cursor.execute("""
+        SELECT TOP 1 ID_OBJECT
+        FROM M4RCH_SENT_OBJECTS
+    """)
+    row = cursor.fetchone()
+    assert row is not None, "No M4RCH_SENT_OBJECTS rows found"
+    object_id = row.ID_OBJECT
+
+    results = resolver.list_sentences_for_object(object_id)
+    assert isinstance(results, list), "Expected list"
+    assert len(results) > 0, f"Expected at least one sentence for object '{object_id}'"
+    first = results[0]
+    assert "sentence_id" in first
+    assert "alias" in first
+    assert "is_basis" in first
+
+
+# -- Test: list_sentences_for_object con objeto inexistente --
+def test_list_sentences_for_object_unknown(resolver):
+    results = resolver.list_sentences_for_object("ZZZZZ_NONEXISTENT_OBJ_99999")
+    assert isinstance(results, list), "Expected list"
+    assert len(results) == 0, "Expected empty list for nonexistent object"
+
+
+# -- Test: resolve_bdl_object con objeto conocido --
+def test_resolve_bdl_object_known(resolver):
+    conn = resolver._get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT TOP 1 ID_OBJECT FROM M4RDC_LOGIC_OBJECT")
+    row = cursor.fetchone()
+    assert row is not None, "No BDL objects found in database"
+    object_id = row.ID_OBJECT
+
+    result = resolver.resolve_bdl_object(object_id)
+    assert result is not None, f"Expected to resolve BDL object '{object_id}'"
+    assert isinstance(result, ResolvedBDLObject), "Expected ResolvedBDLObject instance"
+    assert result.object_id.upper() == object_id.upper()
+    assert isinstance(result.fields, list), "Expected fields to be a list"
+
+
+# -- Test: resolve_bdl_object con objeto inexistente --
+def test_resolve_bdl_object_unknown(resolver):
+    result = resolver.resolve_bdl_object("ZZZZZ_NONEXISTENT_OBJ_99999")
+    assert result is None, "Expected None for nonexistent BDL object"
+
+
+# -- Test: resolve_bdl_for_item con item que tiene objeto BDL --
+def test_resolve_bdl_for_item_with_object(resolver):
+    conn = resolver._get_connection()
+    cursor = conn.cursor()
+    # Buscar un item con ID_READ_OBJECT o ID_WRITE_OBJECT definido
+    cursor.execute("""
+        SELECT TOP 1 ID_TI, ID_ITEM
+        FROM M4RCH_ITEMS
+        WHERE ID_READ_OBJECT IS NOT NULL OR ID_WRITE_OBJECT IS NOT NULL
+    """)
+    row = cursor.fetchone()
+    if row is None:
+        # No hay items con BDL en esta BD — test inconcluyente
+        return
+
+    result = resolver.resolve_bdl_for_item(row.ID_TI, row.ID_ITEM)
+    assert result is not None, \
+        f"Expected BDL object for item '{row.ID_TI}.{row.ID_ITEM}'"
+    assert isinstance(result, ResolvedBDLObject), "Expected ResolvedBDLObject instance"
+
+
+# -- Test: resolve_bdl_for_item con item sin objeto BDL --
+def test_resolve_bdl_for_item_no_object(resolver):
+    result = resolver.resolve_bdl_for_item("ZZZZZ_TI", "ZZZZZ_ITEM")
+    assert result is None, "Expected None for nonexistent item"
+
+
+# =============================================================================
 # Runner
 # =============================================================================
 if __name__ == "__main__":
@@ -430,6 +539,14 @@ if __name__ == "__main__":
         ("resolve_all_args_for_ti vacío", test_resolve_all_args_for_ti_empty),
         ("list_ti_items_with_args batch", test_list_ti_items_with_args),
         ("list_ti_items_with_args vacío", test_list_ti_items_with_args_empty),
+        ("resolve_sentence conocida", test_resolve_sentence_known),
+        ("resolve_sentence desconocida", test_resolve_sentence_unknown),
+        ("list_sentences_for_object conocido", test_list_sentences_for_object_known),
+        ("list_sentences_for_object desconocido", test_list_sentences_for_object_unknown),
+        ("resolve_bdl_object conocido", test_resolve_bdl_object_known),
+        ("resolve_bdl_object desconocido", test_resolve_bdl_object_unknown),
+        ("resolve_bdl_for_item con BDL", test_resolve_bdl_for_item_with_object),
+        ("resolve_bdl_for_item sin BDL", test_resolve_bdl_for_item_no_object),
     ]
 
     try:

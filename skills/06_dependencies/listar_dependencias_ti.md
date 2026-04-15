@@ -7,6 +7,7 @@ parametros:
     tipo: "string"
     descripcion: "Identificador del TI a analizar."
     requerido: true
+herramienta: "tools.dependencies.list_dependencies"
 ---
 
 ## Documentación de la Skill: `listar_dependencias_ti`
