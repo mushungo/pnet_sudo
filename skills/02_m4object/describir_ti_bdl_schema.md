@@ -1,6 +1,6 @@
 ---
 nombre: "describir_ti_bdl_schema"
-version: "1.0.0"
+version: "1.1.0"
 descripcion: "Traza la relación inversa TI -> BDL -> objetos físicos SQL: dado un TI (o canal), muestra qué objetos lógicos BDL, tablas físicas SQL y columnas están vinculados."
 parametros:
   - nombre: "id_ti"
@@ -35,7 +35,24 @@ TI (M4RCH_TIS)
 └─ Items con overrides (M4RCH_ITEMS con ID_READ_OBJECT distinto al TI)
 ```
 
-**Nota importante:** Un TI puede tener items individuales que apuntan a objetos BDL distintos al del TI padre. El tool detecta estos "overrides" y resuelve sus cadenas BDL de forma independiente.
+### Dos niveles de binding BD
+
+En PeopleNet el vínculo con la BD existe en **dos niveles distintos**:
+
+**Nivel TI** (`M4RCH_TIS`):
+- `ID_READ_OBJECT` / `ID_WRITE_OBJECT` — objeto BDL por defecto para todo el bloque de datos del TI.
+- `ID_READ_SENTENCE` / `ID_WRITE_SENTENCE` — sentence APISQL alternativa o complementaria para el bloque completo.
+- Define el comportamiento de lectura/escritura de todos los items del bloque salvo que tengan override propio.
+
+**Nivel item** (`M4RCH_ITEMS`):
+- `ID_READ_OBJECT` / `ID_READ_FIELD` — objeto BDL y campo concreto del que lee **este item individualmente**.
+- `ID_WRITE_OBJECT` / `ID_WRITE_FIELD` — objeto BDL y campo al que escribe **este item individualmente**.
+- `ID_READ_SENTENCE` / `ID_WRITE_SENTENCE` — sentence que refina la lectura/escritura de este item.
+- Cuando difiere del nivel TI, se denomina **override**: el item lee o escribe de un objeto BDL distinto al del bloque. Hay ~17k overrides de lectura y ~2.8k de escritura en esta BD.
+
+Ver skill `binding_bd_items` para la documentación completa del mecanismo de binding a nivel de item.
+
+**Nota importante:** Este tool detecta los overrides de items (items con `ID_READ_OBJECT` o `ID_WRITE_OBJECT` distinto al del TI padre) y resuelve sus cadenas BDL de forma independiente.
 
 ### Flujo de Trabajo
 

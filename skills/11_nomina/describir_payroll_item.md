@@ -6,7 +6,7 @@ herramienta: "tools.m4object.get_payroll_item"
 parametros:
   - nombre: "id_ti"
     tipo: "string"
-    descripcion: "Filtrar por TI específico (ej: CVE_DP_PAYROLL_CHANNEL)."
+    descripcion: "Filtrar por TI específico (ej: ID_TI_PAYROLL)."
     requerido: false
   - nombre: "id_item"
     tipo: "string"
@@ -44,17 +44,17 @@ python -m tools.m4object.get_payroll_item --list
 
 **Listar payroll items de un TI específico:**
 ```bash
-python -m tools.m4object.get_payroll_item --list --ti "CVE_DP_PAYROLL_CHANNEL"
+python -m tools.m4object.get_payroll_item --list --ti "<ID_TI_PAYROLL>"
 ```
 
 **Buscar un concepto por texto:**
 ```bash
-python -m tools.m4object.get_payroll_item --list --search "BIENESTAR"
+python -m tools.m4object.get_payroll_item --list --search "<TEXTO_BUSQUEDA>"
 ```
 
 **Obtener detalle completo de un payroll item:**
 ```bash
-python -m tools.m4object.get_payroll_item --ti "CVE_DP_PAYROLL_CHANNEL" --item "CVE_CUENTA_BIENESTAR"
+python -m tools.m4object.get_payroll_item --ti "<ID_TI_PAYROLL>" --item "<ID_ITEM_CONCEPTO>"
 ```
 
 ### Relación con otras herramientas

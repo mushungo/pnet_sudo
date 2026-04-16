@@ -19,6 +19,8 @@ z_doc_tech/
 
 # Ignorar la carpeta de trazas e investigación completa
 .logs/
+output/
+.Gerardo/
 
 # Artefactos de Windows (archivos basura)
 nul

@@ -82,6 +82,71 @@ class ResolvedSymbol:
         return f"ResolvedSymbol({', '.join(parts)})"
 
 
+class ResolvedSentence:
+    """Resultado de la resolución de una sentence contra la BD.
+
+    Attributes:
+        sentence_id: Identificador de la sentence.
+        description_esp: Descripción en español.
+        description_eng: Descripción en inglés.
+        sentence_type: Tipo de sentence (código numérico de M4RCH_SENTENCES).
+        is_distinct: Si la sentence tiene SELECT DISTINCT.
+        apisql: SQL compilado (de M4RCH_SENTENCES3) o filtro abstracto
+                (de M4RCH_SENTENCES1) si no hay compilado. Puede ser None.
+        objects: Lista de dicts {id_object, alias, is_basis} con los objetos
+                 BDL referenciados por la sentence (de M4RCH_SENT_OBJECTS).
+    """
+
+    __slots__ = [
+        "sentence_id", "description_esp", "description_eng",
+        "sentence_type", "is_distinct", "apisql", "objects",
+    ]
+
+    def __init__(self, sentence_id, description_esp=None, description_eng=None,
+                 sentence_type=None, is_distinct=False):
+        self.sentence_id = sentence_id
+        self.description_esp = description_esp
+        self.description_eng = description_eng
+        self.sentence_type = sentence_type
+        self.is_distinct = is_distinct
+        self.apisql = None
+        self.objects = []
+
+    def __repr__(self):
+        return f"ResolvedSentence({self.sentence_id})"
+
+
+class ResolvedBDLObject:
+    """Resultado de la resolución de un objeto BDL lógico contra la BD.
+
+    Attributes:
+        object_id: Identificador del objeto (ID_OBJECT).
+        description_esp: Descripción en español (N_OBJECTESP).
+        description_eng: Descripción en inglés (N_OBJECTENG).
+        real_object: Nombre de la tabla/vista física (ID_REAL_OBJECT).
+        object_type: Tipo de objeto BDL (ID_OBJECT_TYPE).
+        fields: Lista de dicts {id_field, description_esp, real_field, m4_type}
+                con los primeros 10 campos del objeto (de M4RDC_LOGIC_FIELDS).
+    """
+
+    __slots__ = [
+        "object_id", "description_esp", "description_eng",
+        "real_object", "object_type", "fields",
+    ]
+
+    def __init__(self, object_id, description_esp=None, description_eng=None,
+                 real_object=None, object_type=None):
+        self.object_id = object_id
+        self.description_esp = description_esp
+        self.description_eng = description_eng
+        self.real_object = real_object
+        self.object_type = object_type
+        self.fields = []
+
+    def __repr__(self):
+        return f"ResolvedBDLObject({self.object_id})"
+
+
 # =============================================================================
 # Constantes de tipo de item
 # =============================================================================
@@ -630,6 +695,235 @@ class DBResolver:
             item.arguments = item_args if item_args else None
 
         return items
+
+    # -----------------------------------------------------------------
+    # resolve_sentence — obtiene metadatos y SQL de una sentence
+    # -----------------------------------------------------------------
+    def resolve_sentence(self, sentence_id):
+        """Obtiene los metadatos y SQL compilado de una sentence.
+
+        Consulta M4RCH_SENTENCES (metadatos) y M4RCH_SENTENCES3 (APISQL
+        compilado completo). Si no hay APISQL compilado cae sobre
+        M4RCH_SENTENCES1 (filtro abstracto).
+
+        Args:
+            sentence_id: Identificador de la sentence.
+
+        Returns:
+            ResolvedSentence o None si no se encuentra.
+        """
+        conn = self._get_connection()
+        if not conn:
+            return None
+
+        try:
+            cursor = conn.cursor()
+            # Metadatos base
+            cursor.execute("""
+                SELECT
+                    s.ID_SENTENCE, s.N_SENTENCEESP, s.N_SENTENCEENG,
+                    s.ID_SENT_TYPE, s.IS_DISTINCT
+                FROM M4RCH_SENTENCES s
+                WHERE s.ID_SENTENCE = ?
+            """, sentence_id.upper())
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            result = ResolvedSentence(
+                sentence_id=row.ID_SENTENCE,
+                description_esp=row.N_SENTENCEESP,
+                description_eng=row.N_SENTENCEENG,
+                sentence_type=row.ID_SENT_TYPE,
+                is_distinct=bool(row.IS_DISTINCT) if row.IS_DISTINCT is not None else False,
+            )
+
+            # APISQL compilado (SENTENCES3)
+            cursor.execute("""
+                SELECT APISQL
+                FROM M4RCH_SENTENCES3
+                WHERE ID_SENTENCE = ?
+            """, sentence_id.upper())
+            apisql_row = cursor.fetchone()
+            if apisql_row and apisql_row.APISQL:
+                result.apisql = apisql_row.APISQL.strip()
+            else:
+                # Fallback: filtro abstracto (SENTENCES1)
+                cursor.execute("""
+                    SELECT FILTER
+                    FROM M4RCH_SENTENCES1
+                    WHERE ID_SENTENCE = ?
+                """, sentence_id.upper())
+                filter_row = cursor.fetchone()
+                result.apisql = filter_row.FILTER.strip() if filter_row and filter_row.FILTER else None
+
+            # Objetos BDL referenciados (SENT_OBJECTS)
+            cursor.execute("""
+                SELECT ID_OBJECT, ALIAS_OBJECT, IS_BASIS
+                FROM M4RCH_SENT_OBJECTS
+                WHERE ID_SENTENCE = ?
+                ORDER BY IS_BASIS DESC, ALIAS_OBJECT
+            """, sentence_id.upper())
+            result.objects = [
+                {"id_object": r.ID_OBJECT, "alias": r.ALIAS_OBJECT, "is_basis": bool(r.IS_BASIS)}
+                for r in cursor.fetchall()
+            ]
+
+            return result
+
+        except Exception as e:
+            logger.error("Error resolviendo sentence %s: %s", sentence_id, e)
+            return None
+
+    # -----------------------------------------------------------------
+    # list_sentences_for_object — sentences que referencian un objeto BDL
+    # -----------------------------------------------------------------
+    def list_sentences_for_object(self, object_id):
+        """Lista las sentences que referencian un objeto BDL dado.
+
+        Consulta M4RCH_SENT_OBJECTS para obtener las sentences que usan
+        el objeto (directamente o como join).
+
+        Args:
+            object_id: Identificador del objeto BDL (ID_OBJECT).
+
+        Returns:
+            Lista de dicts {sentence_id, alias, is_basis}, o lista vacía.
+        """
+        conn = self._get_connection()
+        if not conn:
+            return []
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT so.ID_SENTENCE, so.ALIAS_OBJECT, so.IS_BASIS,
+                       s.N_SENTENCEESP
+                FROM M4RCH_SENT_OBJECTS so
+                JOIN M4RCH_SENTENCES s ON so.ID_SENTENCE = s.ID_SENTENCE
+                WHERE so.ID_OBJECT = ?
+                ORDER BY so.IS_BASIS DESC, so.ID_SENTENCE
+            """, object_id.upper())
+            return [
+                {
+                    "sentence_id": r.ID_SENTENCE,
+                    "alias": r.ALIAS_OBJECT,
+                    "is_basis": bool(r.IS_BASIS),
+                    "description_esp": r.N_SENTENCEESP,
+                }
+                for r in cursor.fetchall()
+            ]
+        except Exception as e:
+            logger.error("Error listando sentences para objeto %s: %s", object_id, e)
+            return []
+
+    # -----------------------------------------------------------------
+    # resolve_bdl_object — metadatos de un objeto BDL lógico
+    # -----------------------------------------------------------------
+    def resolve_bdl_object(self, object_id):
+        """Obtiene los metadatos de un objeto BDL lógico y sus campos principales.
+
+        Consulta M4RDC_LOGIC_OBJECT (cabecera) y M4RDC_FIELDS (campos).
+        Retorna hasta 10 campos ordenados por POSITION para no saturar el hover.
+
+        Args:
+            object_id: Identificador del objeto BDL (ID_OBJECT).
+
+        Returns:
+            ResolvedBDLObject o None si no se encuentra.
+        """
+        conn = self._get_connection()
+        if not conn:
+            return None
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    o.ID_OBJECT, o.ID_TRANS_OBJESP, o.ID_TRANS_OBJENG,
+                    o.REAL_NAME, o.ID_OBJECT_TYPE
+                FROM M4RDC_LOGIC_OBJECT o
+                WHERE o.ID_OBJECT = ?
+            """, object_id.upper())
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            result = ResolvedBDLObject(
+                object_id=row.ID_OBJECT,
+                description_esp=row.ID_TRANS_OBJESP,
+                description_eng=row.ID_TRANS_OBJENG,
+                real_object=row.REAL_NAME,
+                object_type=row.ID_OBJECT_TYPE,
+            )
+
+            # Campos principales (hasta 10)
+            cursor.execute("""
+                SELECT TOP 10
+                    f.ID_FIELD, f.ID_TRANS_FLDESP, f.REAL_NAME, f.ID_TYPE
+                FROM M4RDC_FIELDS f
+                WHERE f.ID_OBJECT = ?
+                ORDER BY f.POSITION
+            """, object_id.upper())
+            result.fields = [
+                {
+                    "id_field": r.ID_FIELD,
+                    "description_esp": r.ID_TRANS_FLDESP,
+                    "real_field": r.REAL_NAME,
+                    "m4_type": r.ID_TYPE,
+                }
+                for r in cursor.fetchall()
+            ]
+
+            return result
+
+        except Exception as e:
+            logger.error("Error resolviendo BDL object %s: %s", object_id, e)
+            return None
+
+    # -----------------------------------------------------------------
+    # resolve_bdl_for_item — BDL object asociado a un item de TI
+    # -----------------------------------------------------------------
+    def resolve_bdl_for_item(self, ti_name, item_name):
+        """Obtiene el objeto BDL de lectura asociado a un item de TI.
+
+        Resuelve M4RCH_ITEMS.ID_READ_OBJECT → resolve_bdl_object().
+        Si no hay objeto de lectura, intenta con ID_WRITE_OBJECT.
+
+        Args:
+            ti_name: Nombre del TI.
+            item_name: Nombre del item.
+
+        Returns:
+            ResolvedBDLObject o None si el item no tiene objeto BDL asociado.
+        """
+        conn = self._get_connection()
+        if not conn:
+            return None
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT ID_READ_OBJECT, ID_WRITE_OBJECT
+                FROM M4RCH_ITEMS
+                WHERE ID_TI = ? AND ID_ITEM = ?
+            """, ti_name.upper(), item_name.upper())
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            object_id = row.ID_READ_OBJECT or row.ID_WRITE_OBJECT
+            if not object_id:
+                return None
+
+            return self.resolve_bdl_object(object_id)
+
+        except Exception as e:
+            logger.error("Error resolviendo BDL para item %s.%s: %s", ti_name, item_name, e)
+            return None
 
     # -----------------------------------------------------------------
     # find_tis_for_channel — lista los TIs de un canal

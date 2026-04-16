@@ -93,15 +93,15 @@ def get_sentence_apisql(id_sentence):
 
             # 6. Objetos BDL referenciados
             cursor.execute(
-                "SELECT ID_OBJECT, ALIAS, IS_BASIS "
-                "FROM M4RCH_SENT_OBJECTS WHERE ID_SENTENCE = ? ORDER BY IS_BASIS DESC, ALIAS",
+                "SELECT ID_OBJECT, ALIAS_OBJECT, IS_BASIS "
+                "FROM M4RCH_SENT_OBJECTS WHERE ID_SENTENCE = ? ORDER BY IS_BASIS DESC, ALIAS_OBJECT",
                 id_sentence
             )
             result["objects"] = []
             for row in cursor.fetchall():
                 result["objects"].append({
                     "id_object": row.ID_OBJECT,
-                    "alias": row.ALIAS,
+                    "alias": row.ALIAS_OBJECT,
                     "is_basis": bool(row.IS_BASIS) if row.IS_BASIS is not None else None,
                 })
 

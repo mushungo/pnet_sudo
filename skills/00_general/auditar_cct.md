@@ -5,11 +5,11 @@ descripcion: "Detecta objetos de PeopleNet creados o modificados recientemente (
 parametros:
   - nombre: "cct_task_id"
     tipo: "string"
-    descripcion: "El ID del Control de Cambio a auditar. Ej: CONTROL_CAMBIO_258_2026."
+    descripcion: "El ID del Control de Cambio a auditar. Ej: CCT_TASK_ID."
     requerido: true
   - nombre: "id_secuser"
     tipo: "string"
-    descripcion: "Opcional. Filtrar objetos tocados por este usuario (ID_SECUSER). Ej: JPEREZ."
+    descripcion: "Opcional. Filtrar objetos tocados por este usuario (ID_SECUSER). Ej: usuario.ejemplo."
     requerido: false
   - nombre: "fecha_desde"
     tipo: "string"
@@ -61,9 +61,9 @@ Esto permite hacer un barrido transversal de actividad sin depender del tipo de 
 Esta skill está respaldada por el script `tools/cct/audit_cct.py`, que implementa el flujo completo descrito a continuación:
 
 ```bash
-python -m tools.cct.audit_cct "CONTROL_CAMBIO_258_2026" --user JPEREZ
-python -m tools.cct.audit_cct "CONTROL_CAMBIO_258_2026" --from 2026-01-01 --to 2026-03-25
-python -m tools.cct.audit_cct "CONTROL_CAMBIO_258_2026" --user JPEREZ --from 2026-03-01
+python -m tools.cct.audit_cct "<CCT_TASK_ID>" --user <usuario.ejemplo>
+python -m tools.cct.audit_cct "<CCT_TASK_ID>" --from <YYYY-MM-DD> --to <YYYY-MM-DD>
+python -m tools.cct.audit_cct "<CCT_TASK_ID>" --user <usuario.ejemplo> --from <YYYY-MM-DD>
 ```
 
 Se requiere al menos `--user` o `--from` para acotar el barrido.
@@ -107,15 +107,15 @@ Se requiere al menos `--user` o `--from` para acotar el barrido.
 
 **Auditar gaps de un CCT para objetos modificados por un usuario específico:**
 ```
-Usa la skill auditar_cct con cct_task_id="CONTROL_CAMBIO_258_2026" e id_secuser="JPEREZ"
+Usa la skill auditar_cct con cct_task_id="<CCT_TASK_ID>" e id_secuser="<usuario.ejemplo>"
 ```
 
 **Auditar gaps de un CCT para objetos tocados en un rango de fechas:**
 ```
-Usa la skill auditar_cct con cct_task_id="CONTROL_CAMBIO_258_2026", fecha_desde="2026-01-01" y fecha_hasta="2026-03-25"
+Usa la skill auditar_cct con cct_task_id="<CCT_TASK_ID>", fecha_desde="<YYYY-MM-DD>" y fecha_hasta="<YYYY-MM-DD>"
 ```
 
 **Auditar combinando usuario y rango de fechas:**
 ```
-Usa la skill auditar_cct con cct_task_id="CONTROL_CAMBIO_258_2026", id_secuser="JPEREZ" y fecha_desde="2026-03-01"
+Usa la skill auditar_cct con cct_task_id="<CCT_TASK_ID>", id_secuser="<usuario.ejemplo>" y fecha_desde="<YYYY-MM-DD>"
 ```

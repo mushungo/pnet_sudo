@@ -13,7 +13,7 @@ parametros:
     requerido: false
   - nombre: "search"
     tipo: "string"
-    descripcion: "Texto libre para filtrar filas por nombre de fila, ID de concepto o nodo (ej. 'JUBIL', 'SUELDO', 'BIENESTAR')."
+    descripcion: "Texto libre para filtrar filas por nombre de fila, ID de concepto o nodo (ej. 'CONCEPTO', 'SUELDO', 'DESCUENTO')."
     requerido: false
 ---
 
@@ -151,8 +151,8 @@ Al ejecutar los 5 pasos, el agente debe construir una tabla de esta forma:
 
 | Fila recibo | Etiqueta | ID_PAYROLL_ITEM | Canal (T3) | Nodo cálculo | Ítem LN4 | Tipo |
 |---|---|---|---|---|---|---|
-| 10 | Sueldo base | CVE_SUELDO_BASE | CVE_DP_PAYROLL | CALC_SUELDO | CVE_SUELDO | Acumulado |
-| 20 | Plan Jubilación | CVE_PLAN_JUBIL | CVE_DP_JUBIL | CALC_JUBIL | CVE_APORT_JUBIL | Cálculo |
+| 10 | Concepto A | ID_CONCEPTO_A | ID_TI_PAYROLL | ID_NODO_CALC | ID_ITEM_LN4 | Acumulado |
+| 20 | Concepto B | ID_CONCEPTO_B | ID_TI_PAYROLL | ID_NODO_CALC | ID_ITEM_LN4 | Cálculo |
 | ... | ... | ... | ... | ... | ... | ... |
 
 ---
@@ -165,25 +165,25 @@ Al ejecutar los 5 pasos, el agente debe construir una tabla de esta forma:
 python -m tools.nomina.get_payslip_layout --list-reports
 
 # Paso 2: filas del recibo con sus conceptos
-python -m tools.nomina.get_payslip_layout --list-rows --report "RECIBO_NOMINA"
+python -m tools.nomina.get_payslip_layout --list-rows --report "<SCO_ID_REPORT>"
 
-# Paso 3: detalle del concepto acumulado de la fila 20
-python -m tools.m4object.get_payroll_item --ti "CVE_DP_PAYROLL" --item "CVE_PLAN_JUBIL"
+# Paso 3: detalle del concepto acumulado de una fila
+python -m tools.m4object.get_payroll_item --ti "<ID_TI_PAYROLL>" --item "<ID_PAYROLL_ITEM>"
 
-# Paso 4: celdas de la fila 20 (nodo/ítem de cálculo)
-python -m tools.nomina.get_payslip_layout --row --report "RECIBO_NOMINA" --body "CUERPO_PPAL" --row-id 20
+# Paso 4: celdas de la fila (nodo/ítem de cálculo)
+python -m tools.nomina.get_payslip_layout --row --report "<SCO_ID_REPORT>" --body "<SCO_ID_BODY>" --row-id <SCO_ID_ROW>
 
 # Paso 5: canal de cálculo completo
-python -m tools.m4object.get_m4object --ti "CVE_DP_JUBIL" --include-rules
+python -m tools.m4object.get_m4object --ti "<ID_TI_CALCULO>" --include-rules
 ```
 
 **Caso 2 — Búsqueda directa por concepto en el recibo:**
 ```bash
-# Buscar filas que incluyan "JUBIL" en nombre o concepto
-python -m tools.nomina.get_payslip_layout --list-rows --report "RECIBO_NOMINA" --search "JUBIL"
+# Buscar filas que incluyan el término en nombre o concepto
+python -m tools.nomina.get_payslip_layout --list-rows --report "<SCO_ID_REPORT>" --search "<TEXTO_BUSQUEDA>"
 
-# Buscar celdas en todo un cuerpo que mencionen "JUBIL"
-python -m tools.nomina.get_payslip_layout --list-cells --report "RECIBO_NOMINA" --body "CUERPO_PPAL" --search "JUBIL"
+# Buscar celdas en todo un cuerpo que mencionen el término
+python -m tools.nomina.get_payslip_layout --list-cells --report "<SCO_ID_REPORT>" --body "<SCO_ID_BODY>" --search "<TEXTO_BUSQUEDA>"
 ```
 
 ---

@@ -116,7 +116,7 @@ python -m tools.nomina.get_payslip_layout --list-rows --report "RECIBO_PNET"
 
 **Buscar filas que incluyan un concepto especifico:**
 ```bash
-python -m tools.nomina.get_payslip_layout --list-rows --search "BIENESTAR"
+python -m tools.nomina.get_payslip_layout --list-rows --search "CONCEPTO"
 ```
 
 **Obtener el detalle completo de la fila 10 (incluye celdas y config. de totalizacion):**

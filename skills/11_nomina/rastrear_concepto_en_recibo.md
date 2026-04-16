@@ -5,7 +5,7 @@ descripcion: "Ingeniería inversa bottom-up: dado un concepto de nómina conocid
 parametros:
   - nombre: "id_concepto"
     tipo: "string"
-    descripcion: "ID del concepto de nómina a rastrear (ej. 'CVE_PLAN_JUBIL', 'JUBIL', 'BIENESTAR'). Se usa como patrón LIKE en la búsqueda."
+    descripcion: "ID del concepto de nómina a rastrear (ej. 'ID_CONCEPTO', 'TEXTO_BUSQUEDA'). Se usa como patrón LIKE en la búsqueda."
     requerido: true
   - nombre: "id_report"
     tipo: "string"
@@ -22,7 +22,7 @@ Realiza ingeniería inversa **bottom-up** del recibo de nómina: partiendo de un
 el canal de cálculo y el ítem LN4 que lo alimenta.
 
 ```
-Concepto conocido (ej. "JUBIL")
+Concepto conocido (ej. "TEXTO_BUSQUEDA")
   └─ ¿En qué filas del recibo aparece?   (M4SCO_ROWS: ID_PAYROLL_ITEM / SCO_ID_NODE)
        └─ ¿En qué celdas?                (M4SCO_ROW_COL_DEF: SCO_ID_NODE / SCO_ID_ITEM)
             └─ ¿Qué canal lo calcula?    (M4RCH_T3S via ID_T3_PI)
@@ -142,37 +142,37 @@ Al ejecutar los pasos, construir una tabla de esta forma:
 
 | Informe | Cuerpo | Fila | Etiqueta fila | Columna | Nodo cálculo | Ítem LN4 | Fuente altern. | En PAYROLL_ITEM |
 |---|---|---|---|---|---|---|---|---|
-| RECIBO_NOM | CUERPO_PPAL | 20 | Plan Jubilación | IMPORTE | CALC_JUBIL | CVE_APORT_JUBIL | — | Sí |
-| RECIBO_NOM | PIE | 90 | Total Jubilación | ACUM | CALC_JUBIL | CVE_PLAN_JUBIL | NODO_HIST | Sí |
+| ID_REPORT | ID_BODY | N | Etiqueta concepto | IMPORTE | ID_NODO_CALC | ID_ITEM_LN4 | — | Sí |
+| ID_REPORT | ID_BODY | M | Etiqueta total | ACUM | ID_NODO_CALC | ID_ITEM_LN4 | ID_NODO_HIST | Sí |
 
 ---
 
 ### Ejemplos de uso completo
 
-**Caso típico — Rastrear el plan de jubilación en todos los recibos:**
+**Caso típico — Rastrear un concepto en todos los recibos:**
 
 ```bash
-# Paso 1: encontrar filas donde aparece "JUBIL"
-python -m tools.nomina.get_payslip_layout --list-rows --search "JUBIL"
+# Paso 1: encontrar filas donde aparece el concepto
+python -m tools.nomina.get_payslip_layout --list-rows --search "<TEXTO_BUSQUEDA>"
 
 # Paso 2: celdas en el cuerpo encontrado
 python -m tools.nomina.get_payslip_layout --list-cells \
-  --report "RECIBO_NOMINA" --body "CUERPO_PPAL" --search "JUBIL"
+  --report "<SCO_ID_REPORT>" --body "<SCO_ID_BODY>" --search "<TEXTO_BUSQUEDA>"
 
 # Paso 3: verificar en payroll items
-python -m tools.m4object.get_payroll_item --search "JUBIL"
+python -m tools.m4object.get_payroll_item --search "<TEXTO_BUSQUEDA>"
 
 # Paso 4: describir el canal de cálculo
-python -m tools.m4object.get_m4object --ti "CVE_DP_JUBILACION" --include-rules
+python -m tools.m4object.get_m4object --ti "<ID_T3_PI>" --include-rules
 ```
 
 **Caso con búsqueda amplia (variantes del término):**
 
 ```bash
-# Probar variantes si "JUBIL" no da resultados
-python -m tools.nomina.get_payslip_layout --list-rows --search "PENSION"
-python -m tools.nomina.get_payslip_layout --list-rows --search "RETIRO"
-python -m tools.nomina.get_payslip_layout --list-rows --search "PLAN_J"
+# Probar variantes si el término inicial no da resultados
+python -m tools.nomina.get_payslip_layout --list-rows --search "<VARIANTE_1>"
+python -m tools.nomina.get_payslip_layout --list-rows --search "<VARIANTE_2>"
+python -m tools.nomina.get_payslip_layout --list-rows --search "<VARIANTE_3>"
 ```
 
 ---
