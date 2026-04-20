@@ -49,7 +49,7 @@ def list_menus(search=None, role=None, parent=None, limit=200):
         o.ID_APPROLE,
         o.AVAILABLE_VERSION,
         o.ID_DEPENDING_MENU,
-        o.SHOW_IN_MAP,
+        o.ID_SCREEN,
         o.DT_LAST_UPDATE
     FROM M4RMN_OPTIONS o
     """
@@ -98,7 +98,7 @@ def list_menus(search=None, role=None, parent=None, limit=200):
                     "id_approle": row.ID_APPROLE,
                     "available_version": row.AVAILABLE_VERSION,
                     "id_depending_menu": row.ID_DEPENDING_MENU,
-                    "show_in_map": bool(row.SHOW_IN_MAP) if row.SHOW_IN_MAP is not None else None,
+                    "id_screen": row.ID_SCREEN if row.ID_SCREEN else None,
                     "dt_last_update": str(row.DT_LAST_UPDATE) if row.DT_LAST_UPDATE else None,
                 })
 

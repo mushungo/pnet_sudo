@@ -40,7 +40,7 @@ Obtiene la definición completa de una opción de menú de PeopleNet, incluyendo
 - **ID_BP / ID_BP_AUX_1 / ID_BP_AUX_2**: tareas de negocio vinculadas (seguridad ACL)
 - **ID_APPROLE**: rol de aplicación requerido
 - **ID_DEPENDING_MENU**: padre en la peineta PNet+ (modo red)
-- **SHOW_IN_MAP**: visibilidad en el mapa visual PNet+
+- **ID_SCREEN**: identificador de pantalla asociada
 - **KEYWORDS{ESP,ENG,...}**: palabras clave de búsqueda
 
 ### Arquitectura de Seguridad: ID_APPROLE en Cascada

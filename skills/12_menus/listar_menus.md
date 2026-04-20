@@ -104,7 +104,7 @@ python -m tools.menus.list_menus --parent PEOPLENET
       "id_approle": "HRM_MANAGER",
       "available_version": "60250",
       "id_depending_menu": null,
-      "show_in_map": true,
+      "id_screen": null,
       "dt_last_update": "2025-01-15 10:30:00"
     }
   ]
