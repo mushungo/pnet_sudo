@@ -24,16 +24,34 @@ if project_root not in sys.path:
 from tools.general.db_utils import db_connection
 
 
-OWNER_FLAG_MAP = {
-    0: "Sin propietario",
-    1: "Standard",
-    2: "Corporate",
-    3: "Country",
-    4: "Client",
-}
+def decode_owner_flag(value):
+    """Decodifica OWNER_FLAG por rango."""
+    if value is None:
+        return None
+    if value == 0:
+        return "Sin propietario"
+    if value == 1:
+        return "Standard"
+    if value == 2:
+        return "Standard Extendido"
+    if 3 <= value <= 9:
+        return "Reservado"
+    if 10 <= value <= 19:
+        return "Standard Premium"
+    if value == 20:
+        return "Corporate"
+    if value == 21:
+        return "Corporate Extendido"
+    if 22 <= value <= 29:
+        return "Reservado Corporate"
+    if 40 <= value <= 49:
+        return "Country"
+    if 50 <= value <= 99:
+        return "Client"
+    return f"Custom({value})"
 
 
-def get_menu(id_menu, include_children=False, include_hits=False):
+def get_menu(id_menu, include_children=False, include_hits=False, include_bp=False):
     """Obtiene la definición completa de una opción de menú.
 
     Consulta: M4RMN_OPTIONS, M4RMN_OPTIONS1 (URLs), M4RMN_TREE (árbol),
@@ -67,7 +85,7 @@ def get_menu(id_menu, include_children=False, include_hits=False):
                 "o.ICON, o.ICON_AUX, o.OWNER_FLAG, "
                 "o.ID_APPROLE, o.ID_HELPTOPIC, "
                 "o.AVAILABLE_VERSION, o.ID_DEPENDING_MENU, "
-                "o.POSITION_DEPENDING_MENU, o.SHOW_IN_MAP, "
+                "o.POSITION_DEPENDING_MENU, "
                 "o.KEYWORDSESP, o.KEYWORDSENG, "
                 "o.ID_SECUSER, o.DT_LAST_UPDATE, "
                 "o.ID_SCREEN, o.OWNERSHIP, o.USABILITY "
@@ -103,14 +121,13 @@ def get_menu(id_menu, include_children=False, include_hits=False):
                 "icon": main_row.ICON,
                 "icon_aux": main_row.ICON_AUX,
                 "owner_flag": main_row.OWNER_FLAG,
-                "owner_flag_name": OWNER_FLAG_MAP.get(main_row.OWNER_FLAG, f"Unknown({main_row.OWNER_FLAG})"),
+                "owner_flag_name": decode_owner_flag(main_row.OWNER_FLAG),
                 "id_approle": main_row.ID_APPROLE,
                 "id_helptopic": main_row.ID_HELPTOPIC,
                 "available_version": main_row.AVAILABLE_VERSION,
                 "pnet_plus": {
                     "id_depending_menu": main_row.ID_DEPENDING_MENU,
                     "position": main_row.POSITION_DEPENDING_MENU,
-                    "show_in_map": bool(main_row.SHOW_IN_MAP) if main_row.SHOW_IN_MAP is not None else None,
                 },
                 "keywords": {
                     "esp": main_row.KEYWORDSESP,
@@ -242,6 +259,40 @@ def get_menu(id_menu, include_children=False, include_hits=False):
             fav_row = cursor.fetchone()
             result["favourites_count"] = fav_row.fav_users if fav_row else 0
 
+            # 8. BP vinculado y presentaciones (opcional)
+            if include_bp and result["business_process"]["id_bp"]:
+                bp_id = result["business_process"]["id_bp"]
+                cursor.execute(
+                    "SELECT ID_BP, N_BPESP, N_BPENG, ID_T3, SECURITY_TYPE, STATE, OWNER_FLAG "
+                    "FROM M4RBP_DEF WHERE ID_BP = ?",
+                    bp_id
+                )
+                bp_row = cursor.fetchone()
+                if bp_row:
+                    bp_def = {
+                        "id_bp": bp_row.ID_BP,
+                        "name_esp": bp_row.N_BPESP,
+                        "name_eng": bp_row.N_BPENG,
+                        "id_t3": bp_row.ID_T3,
+                        "security_type": bp_row.SECURITY_TYPE,
+                        "state": bp_row.STATE,
+                        "owner_flag": bp_row.OWNER_FLAG,
+                    }
+                    cursor.execute(
+                        "SELECT ID_PRESENTATION, ID_APPROLE, DT_LAST_UPDATE "
+                        "FROM M4RCH_TASK_PRESENTATION WHERE ID_BP = ?",
+                        bp_id
+                    )
+                    presentations = []
+                    for p_row in cursor.fetchall():
+                        presentations.append({
+                            "id_presentation": p_row.ID_PRESENTATION,
+                            "id_approle": p_row.ID_APPROLE,
+                            "dt_last_update": str(p_row.DT_LAST_UPDATE) if p_row.DT_LAST_UPDATE else None,
+                        })
+                    bp_def["presentations"] = presentations
+                    result["business_process"]["definition"] = bp_def
+
             return result
 
     except Exception as e:
@@ -263,7 +314,17 @@ if __name__ == "__main__":
         action="store_true",
         help="Incluir detalle de contadores de uso por usuario"
     )
+    parser.add_argument(
+        "--include-bp",
+        action="store_true",
+        help="Incluir definición del BP vinculado y sus presentaciones"
+    )
     args = parser.parse_args()
 
-    result = get_menu(args.id_menu, include_children=args.include_children, include_hits=args.include_hits)
+    result = get_menu(
+        args.id_menu,
+        include_children=args.include_children,
+        include_hits=args.include_hits,
+        include_bp=args.include_bp
+    )
     print(json.dumps(result, indent=2, default=str))

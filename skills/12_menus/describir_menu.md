@@ -1,6 +1,6 @@
 ---
 nombre: "describir_menu"
-version: "1.1.0"
+version: "1.2.0"
 descripcion: "Obtiene el detalle completo de una opción de menú de PeopleNet: definición, árbol, argumentos, uso y favoritos."
 parametros:
   - nombre: "id_menu"
@@ -15,6 +15,10 @@ parametros:
     tipo: "boolean"
     requerido: false
     descripcion: "Incluir detalle de contadores de uso por usuario"
+  - nombre: "include_bp"
+    tipo: "boolean"
+    requerido: false
+    descripcion: "Incluir definición del BP vinculado y sus presentaciones asociadas"
 ---
 
 ## Documentacion de la Skill: `describir_menu`
@@ -33,7 +37,7 @@ Obtiene la definición completa de una opción de menú de PeopleNet, incluyendo
 | Uso | `M4RMN_MENU_HITS` | Contadores de visitas por usuario |
 | Favoritos | `M4RMN_FAVORIT_TREE` | Conteo de usuarios que tienen esta opción como favorita |
 
-### Campos Clave de SMN_OPTIONS
+### Campos Clave de M4RMN_OPTIONS
 - **ID_MENU**: identificador lógico único
 - **TRANS_MENU{ESP,ENG,...}**: texto corto del menú (7 idiomas)
 - **N_MENU{ESP,ENG,...}**: descripción larga (VARCHAR 2000)
@@ -42,6 +46,22 @@ Obtiene la definición completa de una opción de menú de PeopleNet, incluyendo
 - **ID_DEPENDING_MENU**: padre en la peineta PNet+ (modo red)
 - **ID_SCREEN**: identificador de pantalla asociada
 - **KEYWORDS{ESP,ENG,...}**: palabras clave de búsqueda
+- **OWNER_FLAG**: nivel de herencia (rango numérico, ver decodificación)
+
+### Decodificación de OWNER_FLAG (por rangos)
+| Rango | Significado |
+|---|---|
+| 0 | Sin propietario |
+| 1 | Standard |
+| 2 | Standard Extendido |
+| 3-9 | Reservado |
+| 10-19 | Standard Premium |
+| 20 | Corporate |
+| 21 | Corporate Extendido |
+| 22-29 | Reservado Corporate |
+| 40-49 | Country |
+| 50-99 | Client |
+| >99 | Custom |
 
 ### Arquitectura de Seguridad: ID_APPROLE en Cascada
 El campo `ID_APPROLE` aparece en todas las tablas de menú, controlando visibilidad en cada nivel:
@@ -73,6 +93,24 @@ Las tablas `M4RMN_*` tienen campos auditables (`ID_SECUSER`, `DT_LAST_UPDATE`, `
 - El campo `ID_APP_USER` se almacena como `ID_SECUSER` en todas las tablas `M4RMN_*`.
 - Una misma opción puede aparecer en múltiples posiciones del árbol (clave compuesta `ID_MENU + ID_PARENT_MENU` en `SMN_TREE`).
 
+### Cadena Completa: Menú → BP → Presentación
+Cada opción de menú está vinculada a un Business Process (`ID_BP`), y cada BP puede tener presentaciones asociadas. La cadena completa de trazabilidad es:
+
+```
+M4RMN_OPTIONS (menú)
+    ↓ ID_BP
+M4RBP_DEF (Business Process)
+    ↓ ID_BP
+M4RCH_TASK_PRESENTATION (presentaciones vinculadas)
+    ↓ ID_PRESENTATION
+M4RPT_PRESENTATION (definición de presentación)
+```
+
+Para recuperar la cadena completa con `--include-bp`:
+- Se consulta el BP vinculado en `ID_BP`
+- Se obtiene la definición básica desde `M4RBP_DEF`
+- Se listan las presentaciones desde `M4RCH_TASK_PRESENTATION`
+
 ### Flujo de Trabajo
 1. Conecta a la BD de metadatos.
 2. Consulta la definición principal en M4RMN_OPTIONS.
@@ -82,6 +120,7 @@ Las tablas `M4RMN_*` tienen campos auditables (`ID_SECUSER`, `DT_LAST_UPDATE`, `
 6. Consulta argumentos de M4RMN_ARGUMENTS.
 7. Obtiene estadísticas de uso de M4RMN_MENU_HITS.
 8. Cuenta usuarios que la tienen en favoritos via M4RMN_FAVORIT_TREE.
+9. Opcionalmente obtiene el BP vinculado y sus presentaciones (--include-bp).
 
 ### Ejemplo de Uso
 ```bash
@@ -93,6 +132,9 @@ python -m tools.menus.get_menu PEOPLENET --include-children
 
 # Con detalle de uso por usuario
 python -m tools.menus.get_menu HRM_EMPLOYEES --include-hits
+
+# Con BP vinculado y presentaciones
+python -m tools.menus.get_menu HRM_EMPLOYEES --include-bp
 ```
 
 **Resultado esperado (resumido):**
