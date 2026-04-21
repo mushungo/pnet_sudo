@@ -14,6 +14,7 @@ __pycache__/
 # Ignorar la documentación generada automáticamente
 docs/
 z_doc_tech/
+z_portalweb/
 
 .notas.cajondesastre.md
 
