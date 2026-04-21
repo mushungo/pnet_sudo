@@ -1,0 +1,49 @@
+{
+  "scopeName": "source.obl",
+  "patterns": [
+    {
+      "name": "keyword.control.obl",
+      "match": "(?i)\\b(BEGIN|END)\\b"
+    },
+    {
+      "name": "entity.name.tag.obl",
+      "match": "(?<=BEGIN\\s+)\\w+"
+    },
+    {
+      "name": "variable.other.member.obl",
+      "match": "(?<=BEGIN\\s+\\w+\\s+)\\w+"
+    },
+    {
+      "name": "support.type.property-name.obl",
+      "match": "^\\s*(\\w+)(?=\\s*=)"
+    },
+    {
+      "name": "string.quoted.double.obl",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.obl",
+          "match": "##(CHNNL|ND|TM)\\[[^\\]]+\\]"
+        },
+        {
+          "name": "variable.language.obl",
+          "match": "\\*O\\*[/\\.\\w]+"
+        }
+      ]
+    },
+    {
+      "name": "constant.numeric.obl",
+      "match": "\\b-?\\d+\\b"
+    },
+    {
+      "name": "constant.language.boolean.obl",
+      "match": "(?i)\\b(True|False)\\b"
+    },
+    {
+      "name": "comment.line.double-slash.obl",
+      "match": "//.*$"
+    }
+  ],
+  "displayName": "OBL Presentation"
+}

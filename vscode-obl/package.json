@@ -1,0 +1,73 @@
+{
+  "name": "obl-language-support",
+  "displayName": "OBL Language Support",
+  "description": "Language support for PeopleNet's OBL (Object Based Language) — syntax highlighting, diagnostics, hover, and go-to-definition via LSP.",
+  "version": "0.1.0",
+  "publisher": "pnet-sudo",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:obl"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "obl",
+        "aliases": [
+          "OBL",
+          "obl"
+        ],
+        "extensions": [
+          ".obl"
+        ],
+        "configuration": "./obl.language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "obl",
+        "scopeName": "source.obl",
+        "path": "./syntaxes/obl.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "OBL Language Server",
+      "properties": {
+        "obl.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to the Python interpreter used to run the OBL language server."
+        },
+        "obl.serverArgs": {
+          "type": "array",
+          "default": [
+            "-m",
+            "obl_lsp"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Arguments passed to the Python interpreter to start the OBL language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}
