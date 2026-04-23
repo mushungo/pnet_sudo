@@ -1,5 +1,6 @@
 # Ignorar ficheros y carpetas específicos del entorno
 .env
+projects/**/.env
 .venv/
 venv/
 __pycache__/
