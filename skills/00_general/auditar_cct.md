@@ -1,6 +1,6 @@
 ---
 nombre: "auditar_cct"
-version: "1.1.0"
+version: "1.2.0"
 descripcion: "Detecta objetos de PeopleNet creados o modificados recientemente (por usuario o rango de fechas) que no están registrados en un CCT dado. Cobertura genérica: BDL, canales, nómina, presentaciones, reglas y sentencias."
 parametros:
   - nombre: "cct_task_id"
@@ -50,7 +50,7 @@ Esto permite hacer un barrido transversal de actividad sin depender del tipo de 
 | PAYROLL ITEM | `M4RCH_PAYROLL_ITEM` | `ID_PAYROLL_ITEM`, `ID_T3` |
 | PRESENTATION | `M4RCH_T3S` | `ID_T3` |
 | RULE | `M4RCH_RULES` | `ID_RULE`, `ID_TI` |
-| CONCEPT | `M4RCH_CONCEPTS` | `ID_CONCEPT` |
+| CONCEPT | `M4RCH_CONCEPTS` | `ID_TI`, `ID_ITEM` (clave compuesta) |
 | SENTENCE | `M4RCH_SENTENCES` | `ID_SENTENCE` |
 | PHYSICAL SCRIPT | `INFORMATION_SCHEMA.COLUMNS` (tablas físicas SQL Server) | sin `DT_LAST_UPDATE` propio — inferido por los objetos lógicos asociados |
 
@@ -87,21 +87,42 @@ Se requiere al menos `--user` o `--from` para acotar el barrido.
 
     Repetir para `M4RCH_ITEMS`, `M4RCH_PAYROLL_ITEM`, `M4RCH_T3S`, `M4RCH_RULES`, `M4RCH_CONCEPTS`, `M4RCH_SENTENCES`.
 
-4. **Cruzar resultados con el CCT**: Comparar el conjunto de objetos encontrados en el barrido contra los `CCT_OBJECT_ID` ya registrados en el CCT. Identificar los **objetos en BD que no están en el CCT** (gaps).
+4. **Cruzar resultados con el CCT** (con verificación de parent): Comparar el conjunto de objetos encontrados en el barrido contra los `CCT_OBJECT_ID` ya registrados en el CCT. Para ITEM y FIELD se verifica también que el parent (canal `ID_TI` / objeto BDL `ID_OBJECT`) coincida. Se distinguen tres categorías:
+    - **Ya en CCT con parent correcto**: cobertura completa.
+    - **Gaps (faltan en CCT)**: objeto no registrado en absoluto.
+    - **Wrong parent**: objeto registrado en CCT pero con parent distinto al de BD — hay entradas del CCT que apuntan a canales/objetos incorrectos.
 
-5. **Inferir PHYSICAL SCRIPTs faltantes**: Para cada FIELD o ITEM con gap detectado, determinar si existe una columna física asociada en las tablas SQL Server (via `INFORMATION_SCHEMA.COLUMNS`) que tampoco esté en el CCT como PHYSICAL SCRIPT.
+5. **Detectar canales/objects sin cobertura (parent gaps)**: Para cada ITEM y FIELD barrido, verificar si el pair `(objeto, parent_BD)` está cubierto en el CCT. Si el objeto está registrado en el CCT para otros parents pero no para el parent de BD, se reporta en `parent_gaps`. Esta sección es complementaria a `wrong_parent`.
 
-6. **Generar informe de gaps**: Presentar un informe estructurado por tipo de objeto con tres secciones:
+6. **Inferir PHYSICAL SCRIPTs faltantes**: Para cada FIELD barrido, determinar si existe una columna física asociada en las tablas SQL Server (via `INFORMATION_SCHEMA.COLUMNS`, patrón `M4<ID_OBJECT>%`) que no tenga un PHYSICAL SCRIPT registrado en el CCT.
+
+7. **Clasificar RULE gaps como cubiertos por NS ITEM**: Las reglas de un ítem en un canal quedan automáticamente cubiertas cuando ese ITEM está registrado en el CCT para ese canal (el objeto RAMDL `NS ITEM` incluye todas las reglas vía `read-table SCH_RULES → call-object RULE`). Los gaps de RULE que tienen el ITEM padre registrado se clasifican como `covered_by_ns_item`.
+
+8. **Generar informe de gaps**: Presentar un informe estructurado por tipo de objeto con las siguientes secciones:
     - **Ya en CCT**: objetos del barrido que ya están registrados (para confirmar cobertura).
-    - **Gaps (faltan en CCT)**: objetos modificados en BD que no están en el CCT — estos son los candidatos a añadir.
-    - **Resumen**: conteo de gaps por tipo de objeto y recomendación de acción.
+    - **Gaps (faltan en CCT)**: objetos modificados en BD que no están en el CCT.
+    - **Wrong parent**: objetos en el CCT con parent incorrecto.
+    - **parent_gaps**: combinaciones (objeto, parent BD) no cubiertas en el CCT.
+    - **physical_script_gaps**: columnas físicas sin PHYSICAL SCRIPT en el CCT.
+    - **covered_by_ns_item** (solo RULE): reglas cubiertas implícitamente por el NS ITEM.
+    - **Resumen**: conteo de gaps por tipo.
 
 ### Datos Disponibles en el Informe
 
 - Cabecera del CCT: ID, versión, nombre, estado, si ha sido traspasado.
 - Por cada objeto en el barrido: ID del objeto, tabla origen, usuario que lo modificó, fecha de modificación, rol utilizado.
-- Estado de registro en el CCT: si el objeto ya está en `M4RCT_OBJECTS` o no.
-- Lista final de gaps con tipo de objeto y acción sugerida (NEW o MODIFIED según si el objeto existía antes o es nuevo).
+- Estado de registro en el CCT: si el objeto ya está en `M4RCT_OBJECTS` o no, y si el parent es correcto.
+- `parent_gaps`: lista de pares (objeto, parent BD) que faltan en el CCT aunque el objeto esté registrado para otros parents.
+- `physical_script_gaps`: columnas físicas que existen en SQL Server sin PHYSICAL SCRIPT en el CCT.
+- `covered_by_ns_item`: reglas de RULE cubiertas implícitamente por el NS ITEM del canal.
+- Lista final de gaps con tipo de objeto.
+
+### Notas Técnicas Importantes
+
+- **`M4RCH_CONCEPTS`** usa clave compuesta `(ID_TI, ID_ITEM)`. No existe columna `ID_CONCEPT`.
+- **`PHYSICAL SCRIPT`** no tiene tabla de metadatos propia con `DT_LAST_UPDATE`. Se infiere a partir de `INFORMATION_SCHEMA.COLUMNS` usando el patrón `M4 + ID_OBJECT` (truncado a 16 chars total) para encontrar la tabla física.
+- **`NS ITEM`** (objeto RAMDL) incluye automáticamente todas las reglas del ítem en ese canal. No es necesario registrar reglas explícitamente si el ITEM está en el CCT.
+- Los **PHYSICAL SCRIPTs** suelen cubrir varias tablas físicas en un solo registro de CCT (ej: ALTER TABLE en `M4CVE_AC_HR_PERIOD` y `M4CVE_SM_AC_HR_PER` en el mismo script). El `physical_script_gaps` puede dar falsos negativos si el script aún no se ha ejecutado (las columnas no existen en `INFORMATION_SCHEMA` hasta que se corra el ALTER TABLE).
 
 ### Ejemplos de Uso
 

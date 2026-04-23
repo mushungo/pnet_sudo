@@ -65,14 +65,14 @@ SWEEP_TABLES = [
     {
         "cct_type": "RULE",
         "table": "M4RCH_RULES",
-        "id_columns": ["ID_RULE", "ID_TI"],
+        "id_columns": ["ID_RULE", "ID_TI", "ID_ITEM"],
         "primary_id": "ID_RULE",
     },
     {
         "cct_type": "CONCEPT",
         "table": "M4RCH_CONCEPTS",
-        "id_columns": ["ID_CONCEPT"],
-        "primary_id": "ID_CONCEPT",
+        "id_columns": ["ID_TI", "ID_ITEM"],
+        "primary_id": "ID_ITEM",
     },
     {
         "cct_type": "SENTENCE",
@@ -116,9 +116,14 @@ def _fetch_cct_registered_objects(cursor, cct_task_id, pk_col):
     """Obtiene los objetos ya registrados en el CCT desde M4RCT_OBJECTS.
 
     Returns:
-        set de CCT_OBJECT_ID (o la columna equivalente).
+        tuple (registered_set, registered_detail, registered_map) donde:
+          - registered_set: set de CCT_OBJECT_ID registrados.
+          - registered_detail: lista de dicts con el detalle completo.
+          - registered_map: dict {cct_object_id: [cct_parent_obj_id, ...]} para
+            verificar cobertura por canal.
     """
     registered = set()
+    registered_map = {}
     try:
         cursor.execute(f"""
             SELECT *
@@ -128,7 +133,7 @@ def _fetch_cct_registered_objects(cursor, cct_task_id, pk_col):
         rows = cursor.fetchall()
 
         if not rows:
-            return registered, []
+            return registered, [], registered_map
 
         columns = [desc[0] for desc in cursor.description]
         objects_detail = []
@@ -143,13 +148,26 @@ def _fetch_cct_registered_objects(cursor, cct_task_id, pk_col):
             for candidate in ["CCT_OBJECT_ID", "ID_OBJECT", "OBJECT_ID"]:
                 val = getattr(row, candidate, None)
                 if val:
-                    registered.add(str(val).strip())
+                    obj_id = str(val).strip()
+                    registered.add(obj_id)
+
+                    # Construir el mapa de canales por objeto
+                    parent_val = None
+                    for parent_candidate in ["CCT_PARENT_OBJ_ID", "ID_PARENT", "PARENT_OBJ_ID"]:
+                        parent_val = getattr(row, parent_candidate, None)
+                        if parent_val:
+                            break
+                    parent_str = str(parent_val).strip() if parent_val else None
+                    if obj_id not in registered_map:
+                        registered_map[obj_id] = []
+                    if parent_str and parent_str not in registered_map[obj_id]:
+                        registered_map[obj_id].append(parent_str)
                     break
 
-        return registered, objects_detail
+        return registered, objects_detail, registered_map
 
     except Exception as e:
-        return registered, [{"error": str(e)}]
+        return registered, [{"error": str(e)}], registered_map
 
 
 def _sweep_table(cursor, table_def, id_secuser=None, fecha_desde=None, fecha_hasta=None):
@@ -211,14 +229,25 @@ def _sweep_table(cursor, table_def, id_secuser=None, fecha_desde=None, fecha_has
         return [{"_error": str(e), "_table": table}]
 
 
-def _cross_reference(swept_items, registered_set):
+def _cross_reference(swept_items, registered_set, registered_map=None, parent_col=None):
     """Cruza los items barridos contra el set de objetos registrados en el CCT.
 
+    Para tipos que usan clave compuesta (FIELD, ITEM), si se pasa registered_map
+    y parent_col se verifica también que el parent coincida. Si el objeto está en
+    registered_set pero con parent incorrecto se marca como 'wrong_parent'.
+
+    Args:
+        swept_items: lista de dicts del barrido.
+        registered_set: set de CCT_OBJECT_ID registrados.
+        registered_map: dict {cct_object_id: [cct_parent_obj_id]} (opcional).
+        parent_col: nombre de la columna parent en el entry (ej: "id_ti", "id_object").
+
     Returns:
-        tuple (in_cct, gaps): listas de items ya registrados y faltantes.
+        tuple (in_cct, gaps, wrong_parent): listas de registrados, faltantes y con parent incorrecto.
     """
     in_cct = []
     gaps = []
+    wrong_parent = []
 
     for item in swept_items:
         if "_error" in item:
@@ -226,12 +255,192 @@ def _cross_reference(swept_items, registered_set):
             continue
 
         primary_id = item.get("_primary_id", "")
-        if primary_id and primary_id in registered_set:
-            in_cct.append(item)
-        else:
+        if not primary_id or primary_id not in registered_set:
             gaps.append(item)
+            continue
 
-    return in_cct, gaps
+        # El objeto está en el CCT — verificar parent si aplica
+        if registered_map is not None and parent_col:
+            parent_val = item.get(parent_col)
+            parents_in_cct = registered_map.get(primary_id, [])
+            if parent_val and parents_in_cct and parent_val not in parents_in_cct:
+                wrong = dict(item)
+                wrong["_parent_in_bd"] = parent_val
+                wrong["_parent_in_cct"] = parents_in_cct
+                wrong["_note"] = (
+                    f"Registrado en CCT con parent {parents_in_cct} "
+                    f"pero en BD el parent es '{parent_val}'"
+                )
+                wrong_parent.append(wrong)
+                continue
+
+        in_cct.append(item)
+
+    return in_cct, gaps, wrong_parent
+
+
+def _check_rule_covered_by_ns_item(rule_gaps, registered_map):
+    """Reclasifica gaps de RULE según si el ítem padre está en el CCT para el mismo canal.
+
+    El objeto RAMDL NS ITEM incluye automáticamente todas las reglas del ítem
+    en ese canal (lee SCH_RULES y llama call-object RULE por cada una). Por
+    tanto, si un ITEM está registrado en el CCT para (canal X), todas sus
+    reglas en (canal X) quedan cubiertas sin necesidad de registro explícito.
+
+    Args:
+        rule_gaps: lista de dicts de gaps RULE (cada uno tiene id_rule, id_ti, id_item).
+        registered_map: dict {cct_object_id: [cct_parent_obj_id, ...]} del CCT.
+
+    Returns:
+        tuple (true_gaps, covered_by_ns_item):
+          - true_gaps: reglas que siguen siendo gaps reales.
+          - covered_by_ns_item: reglas cubiertas por el NS ITEM del canal.
+    """
+    true_gaps = []
+    covered_by_ns_item = []
+
+    for gap in rule_gaps:
+        if "_error" in gap:
+            true_gaps.append(gap)
+            continue
+
+        id_item = gap.get("id_item")
+        id_ti = gap.get("id_ti")
+
+        # Comprobar si el ítem padre está registrado en el CCT para este canal
+        parents_in_cct = registered_map.get(id_item, []) if id_item else []
+        if id_ti and id_ti in parents_in_cct:
+            covered = dict(gap)
+            covered["_covered_by"] = f"NS ITEM {id_item} en {id_ti}"
+            covered_by_ns_item.append(covered)
+        else:
+            true_gaps.append(gap)
+
+    return true_gaps, covered_by_ns_item
+
+
+def _check_object_parent_coverage(swept, registered_map, object_col, parent_col, cct_type_label):
+    """Detecta objetos modificados en parents (canal/BDL obj) no registrados en el CCT.
+
+    Generalización para ITEM (parent = ID_TI) y FIELD (parent = ID_OBJECT).
+    Si el objeto está en el CCT pero con parent distinto al de BD → parent_gaps.
+    Si el objeto está en el CCT para ese parent → ok.
+    Si el objeto no está en absoluto → lo detecta el cross_reference normal.
+
+    Args:
+        swept: lista de dicts del barrido.
+        registered_map: dict {cct_object_id: [cct_parent_obj_id, ...]} del CCT.
+        object_col: nombre de la columna del objeto en el entry (ej: "id_item", "id_field").
+        parent_col: nombre de la columna del parent en el entry (ej: "id_ti", "id_object").
+        cct_type_label: etiqueta para el campo "type" del gap (ej: "ITEM", "FIELD").
+
+    Returns:
+        lista de dicts con los (object, parent) que faltan en el CCT.
+    """
+    parent_gaps = []
+
+    for entry in swept:
+        if "_error" in entry:
+            continue
+        obj_id = entry.get(object_col)
+        parent_id = entry.get(parent_col)
+
+        parents_in_cct = registered_map.get(obj_id, [])
+
+        if not parents_in_cct:
+            # No está en el CCT en absoluto → ya lo detecta el gap normal
+            continue
+
+        if parent_id and parent_id not in parents_in_cct:
+            parent_gaps.append({
+                "cct_type": cct_type_label,
+                object_col: obj_id,
+                parent_col: parent_id,
+                f"{parent_col}_en_cct": parents_in_cct,
+                "id_secuser": entry.get("id_secuser"),
+                "dt_last_update": entry.get("dt_last_update"),
+                "note": (
+                    f"{cct_type_label} registrado en CCT con parent {parents_in_cct} "
+                    f"pero modificado con parent '{parent_id}'"
+                ),
+            })
+
+    return parent_gaps
+
+
+def _detect_physical_script_gaps(cursor, field_swept, registered_map):
+    """Detecta columnas físicas en BD que no tienen PHYSICAL SCRIPT en el CCT.
+
+    Para cada campo lógico (M4RDC_FIELDS) barrido, busca si existe una columna
+    física en INFORMATION_SCHEMA.COLUMNS en tablas M4<ID_OBJECT>. Si la columna
+    existe físicamente pero no hay un PHYSICAL SCRIPT registrado en el CCT con
+    ese ID_FIELD, se reporta como gap.
+
+    El patrón de nombre de tabla física es: M4 + los primeros 14 chars del ID_OBJECT
+    (truncado para ajustarse a los 16 chars de nombre de tabla SQL Server usados
+    históricamente en PeopleNet, ej: SVE_AC_HR_PERIOD → M4SVE_AC_HR_PER).
+
+    Args:
+        cursor: cursor de BD activo.
+        field_swept: lista de dicts del barrido de M4RDC_FIELDS.
+        registered_map: dict {cct_object_id: [cct_parent_obj_id, ...]} del CCT.
+
+    Returns:
+        lista de dicts con columnas físicas que faltan como PHYSICAL SCRIPT en el CCT.
+    """
+    physical_gaps = []
+    checked = set()  # evitar duplicados (mismo field puede aparecer varias veces)
+
+    for entry in field_swept:
+        if "_error" in entry:
+            continue
+        id_field = entry.get("id_field")
+        id_object = entry.get("id_object")
+        if not id_field or not id_object:
+            continue
+
+        key = (id_field, id_object)
+        if key in checked:
+            continue
+        checked.add(key)
+
+        # Nombre de tabla física: M4 + id_object (SQL Server trunca a 128 chars,
+        # pero PeopleNet históricamente usa M4 + primeros 14 chars del ID_OBJECT)
+        physical_table_prefix = ("M4" + id_object)[:16]
+
+        try:
+            cursor.execute(
+                """SELECT TABLE_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE COLUMN_NAME = ? AND TABLE_NAME LIKE ?""",
+                id_field,
+                physical_table_prefix + "%",
+            )
+            phys_rows = cursor.fetchall()
+        except Exception:
+            continue
+
+        if not phys_rows:
+            continue  # no existe columna física → no es un campo almacenado
+
+        # Existe físicamente → comprobar si hay PHYSICAL SCRIPT en el CCT
+        # El registered_map contiene todos los CCT_OBJECT_ID independientemente del tipo;
+        # un PHYSICAL SCRIPT se registra con CCT_OBJECT_ID = ID_FIELD
+        if id_field in registered_map:
+            continue  # ya registrado como PHYSICAL SCRIPT (u otro tipo con mismo ID)
+
+        physical_gaps.append({
+            "id_field": id_field,
+            "id_object": id_object,
+            "physical_tables": [r[0] for r in phys_rows],
+            "id_secuser": entry.get("id_secuser"),
+            "dt_last_update": entry.get("dt_last_update"),
+            "note": (
+                f"Columna física '{id_field}' existe en {[r[0] for r in phys_rows]} "
+                f"pero no hay PHYSICAL SCRIPT registrado en el CCT"
+            ),
+        })
+
+    return physical_gaps
 
 
 def audit_cct(cct_task_id, id_secuser=None, fecha_desde=None, fecha_hasta=None):
@@ -268,7 +477,7 @@ def audit_cct(cct_task_id, id_secuser=None, fecha_desde=None, fecha_hasta=None):
             pk_col = header.pop("_pk_column", "CCT_TASK_ID")
 
             # 2. Objetos ya registrados
-            registered_set, registered_detail = _fetch_cct_registered_objects(
+            registered_set, registered_detail, registered_map = _fetch_cct_registered_objects(
                 cursor, cct_task_id, pk_col
             )
 
@@ -281,6 +490,9 @@ def audit_cct(cct_task_id, id_secuser=None, fecha_desde=None, fecha_hasta=None):
                 "gaps_by_type": {},
             }
 
+            field_swept_all = []
+            item_swept_all = []
+
             for table_def in SWEEP_TABLES:
                 cct_type = table_def["cct_type"]
 
@@ -291,13 +503,37 @@ def audit_cct(cct_task_id, id_secuser=None, fecha_desde=None, fecha_hasta=None):
                     fecha_hasta=fecha_hasta,
                 )
 
-                in_cct, gaps = _cross_reference(swept, registered_set)
+                # Determinar si se requiere verificación de parent
+                if cct_type == "ITEM":
+                    in_cct, gaps, wrong_parent = _cross_reference(
+                        swept, registered_set, registered_map=registered_map, parent_col="id_ti"
+                    )
+                    item_swept_all = swept
+                elif cct_type == "FIELD":
+                    in_cct, gaps, wrong_parent = _cross_reference(
+                        swept, registered_set, registered_map=registered_map, parent_col="id_object"
+                    )
+                    field_swept_all = swept
+                else:
+                    in_cct, gaps, wrong_parent = _cross_reference(swept, registered_set)
+
+                # Para RULE: reclasificar gaps cubiertos por NS ITEM
+                covered_by_ns_item = []
+                if cct_type == "RULE":
+                    gaps, covered_by_ns_item = _check_rule_covered_by_ns_item(gaps, registered_map)
+                    for gap in gaps:
+                        id_item = gap.get("id_item")
+                        id_ti = gap.get("id_ti")
+                        if id_item and id_item in registered_map:
+                            gap["_note"] = (
+                                f"Se resuelve registrando ITEM {id_item} en canal {id_ti} en el CCT"
+                            )
 
                 # Limpiar _primary_id del output (es interno)
-                for item in in_cct + gaps:
+                for item in in_cct + gaps + covered_by_ns_item + wrong_parent:
                     item.pop("_primary_id", None)
 
-                audit_results[cct_type] = {
+                result_entry = {
                     "table": table_def["table"],
                     "swept_count": len(swept),
                     "in_cct_count": len(in_cct),
@@ -305,12 +541,38 @@ def audit_cct(cct_task_id, id_secuser=None, fecha_desde=None, fecha_hasta=None):
                     "in_cct": in_cct,
                     "gaps": gaps,
                 }
+                if covered_by_ns_item:
+                    result_entry["covered_by_ns_item"] = covered_by_ns_item
+                    result_entry["covered_by_ns_item_count"] = len(covered_by_ns_item)
+                if wrong_parent:
+                    result_entry["wrong_parent"] = wrong_parent
+                    result_entry["wrong_parent_count"] = len(wrong_parent)
+
+                audit_results[cct_type] = result_entry
 
                 summary["total_swept"] += len(swept)
                 summary["total_in_cct"] += len(in_cct)
                 summary["total_gaps"] += len(gaps)
                 if len(gaps) > 0:
                     summary["gaps_by_type"][cct_type] = len(gaps)
+
+            # 5. Verificación de cobertura de parents (canales para ITEM, objetos BDL para FIELD)
+            item_parent_gaps = _check_object_parent_coverage(
+                item_swept_all, registered_map,
+                object_col="id_item", parent_col="id_ti", cct_type_label="ITEM"
+            )
+            field_parent_gaps = _check_object_parent_coverage(
+                field_swept_all, registered_map,
+                object_col="id_field", parent_col="id_object", cct_type_label="FIELD"
+            )
+            parent_gaps = item_parent_gaps + field_parent_gaps
+            if parent_gaps:
+                summary["parent_gaps_count"] = len(parent_gaps)
+
+            # 6. Detectar columnas físicas sin PHYSICAL SCRIPT en el CCT
+            physical_script_gaps = _detect_physical_script_gaps(cursor, field_swept_all, registered_map)
+            if physical_script_gaps:
+                summary["physical_script_gaps_count"] = len(physical_script_gaps)
 
             return {
                 "status": "success",
@@ -327,6 +589,8 @@ def audit_cct(cct_task_id, id_secuser=None, fecha_desde=None, fecha_hasta=None):
                     "fecha_hasta": fecha_hasta,
                 },
                 "audit": audit_results,
+                "parent_gaps": parent_gaps,
+                "physical_script_gaps": physical_script_gaps,
                 "summary": summary,
             }
 
