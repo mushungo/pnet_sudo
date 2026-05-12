@@ -1,8 +1,8 @@
 ---
 # Metadata estructurada de la Skill
 nombre: "describir_m4object"
-version: "2.0.0"
-descripcion: "Obtiene la definición completa de un m4object (canal) de PeopleNet, incluyendo su herencia, nodos, TIs, items con argumentos de métodos, conceptos de nómina, y reglas con código fuente LN4."
+version: "2.1.0"
+descripcion: "Obtiene la definición completa de un m4object (canal) de PeopleNet, incluyendo su herencia T3 y TI, nodos sobreescritos, TIs, items con argumentos de métodos, conceptos de nómina, y reglas con código fuente LN4."
 parametros:
   - nombre: "id_t3"
     tipo: "string"
@@ -25,39 +25,50 @@ La jerarquía real de un m4object es:
 
 ```
 T3 (canal)
-├─ Herencia (T3_INHERIT)
-├─ Conectores (T3_CONNTORS)
-└─ Nodos (NODES)
+├─ Herencia T3 (M4RCH_T3_INHERIT)       — cadena de T3 base por nivel
+├─ Conectores (M4RCH_T3_CONNTORS)       — llamadas a T3 externos
+├─ Nodos sobreescritos (M4RCH_OVERWRITE_NO) — overrides de nodos heredados del T3 padre
+└─ Nodos (M4RCH_NODES)
      └─ TI (Technical Instance) — entidad pivotal
+          ├─ Herencia TI (M4RCH_TIS_INHERIT) — cadena de TI base (pool de métodos/funciones)
           ├─ Items (campos/métodos, vinculados a la BDL)
-          │    └─ Argumentos de métodos (ITEM_ARGS) — siempre incluidos
-          ├─ Conceptos de nómina (CONCEPTS) — siempre incluidos
-          └─ Reglas (RULES) — lógica de negocio en LN4
-               └─ Código fuente LN4 (RULES3) — con --include-rules
+          │    └─ Argumentos de métodos (M4RCH_ITEM_ARGS) — siempre incluidos
+          ├─ Conceptos de nómina (M4RCH_CONCEPTS) — siempre incluidos
+          └─ Reglas (M4RCH_RULES) — lógica de negocio en LN4
+               └─ Código fuente LN4 (M4RCH_RULES3) — con --include-rules
 ```
 
 **Nota importante:** La TI (Technical Instance) es una entidad de primer nivel, no un simple passthrough. Tiene sus propios objetos BDL de lectura/escritura, herencia propia, y puede ser reutilizada por diferentes canales a través de nodos distintos.
+
+**Herencia a dos niveles:**
+- **M4RCH_T3_INHERIT**: herencia de canal (T3). Un T3 hereda nodos y conectores de T3 base.
+- **M4RCH_TIS_INHERIT**: herencia de instancia técnica (TI). Los métodos del "pool de funciones" (ej: `ZOOM`, `PVT_APPLY_ZOOM`, `SYS_PARAM_A`) no aparecen en `M4RCH_ITEMS` del TI concreto sino en sus TI base (templates).
+- **M4RCH_OVERWRITE_NO**: registra qué nodos heredados del T3 padre han sido sustituidos por TIs propias en el T3 hijo. Permite resolver qué TI efectiva corresponde a cada slot heredado.
 
 ### Flujo de Trabajo
 La skill invoca el script `tools/m4object/get_m4object.py`, que realiza los siguientes pasos:
 1. **Cabecera del canal**: Consulta `M4RCH_T3S` para los metadatos principales (categoría, stream type, seguridad, etc.).
 2. **Comentarios**: Consulta `M4RCH_T3S1..T3S7` para los comentarios multilingüe.
-3. **Herencia**: Consulta `M4RCH_T3_INHERIT` para la cadena de herencia entre canales.
+3. **Herencia T3**: Consulta `M4RCH_T3_INHERIT` para la cadena de herencia entre canales.
 4. **Conectores**: Consulta `M4RCH_T3_CONNTORS` para las conexiones entre canales.
 5. **Nodos con TIs**: Consulta `M4RCH_NODES` JOIN `M4RCH_TIS` para los nodos y sus instancias técnicas.
 6. **Items por TI**: Consulta `M4RCH_ITEMS` para los campos y métodos de cada TI.
 7. **Argumentos de métodos**: Consulta `M4RCH_ITEM_ARGS` para los parámetros de entrada/salida de items tipo Method (siempre incluidos).
 8. **Conceptos de nómina**: Consulta `M4RCH_CONCEPTS` para los conceptos de nómina asociados a cada TI (siempre incluidos).
-9. **Reglas**: Consulta `M4RCH_RULES` para el conteo (siempre) y detalle (con `--include-rules`) de reglas por TI.
-10. **Código fuente LN4**: Consulta `M4RCH_RULES3` para el código fuente de las reglas (solo con `--include-rules`, truncado a 3000 chars).
-11. **Ensamblaje**: Estructura todo en un JSON jerárquico con un resumen (totales de nodos, TIs, items, conceptos, reglas).
+9. **Herencia TI**: Consulta `M4RCH_TIS_INHERIT` para la cadena de TI base de cada TI (pool de métodos/funciones, siempre incluido).
+10. **Nodos sobreescritos**: Consulta `M4RCH_OVERWRITE_NO` para los overrides de nodos heredados del T3 padre (siempre incluido).
+11. **Reglas**: Consulta `M4RCH_RULES` para el conteo (siempre) y detalle (con `--include-rules`) de reglas por TI.
+12. **Código fuente LN4**: Consulta `M4RCH_RULES3` para el código fuente de las reglas (solo con `--include-rules`, truncado a 3000 chars).
+13. **Ensamblaje**: Estructura todo en un JSON jerárquico con un resumen (totales de nodos, TIs, items, conceptos, reglas).
 
 ### Datos Disponibles
 - **Canal (T3)**: ID, nombre ESP/ENG, categoría, subcategoría, stream type, tipo de ejecución, flags de seguridad/externo/cacheable/separable, servicio, tipo de organización, fechas.
 - **Herencia**: Canales base y tipo de herencia.
 - **Conectores**: Identificador, nodo origen, nodo conector, item conector, tipo.
 - **Nodos**: ID, posición, nombre, tipo, root flag, autoload, filas únicas, visibilidad, afecta BD, DMD, RSM, filtro dinámico.
-- **TI**: ID, nombre, TI base (herencia), objetos BDL de lectura/escritura, sentencias, flags de sistema y generación SQL.
+- **TI**: ID, nombre, TI base (herencia directa), objetos BDL de lectura/escritura, sentencias, flags de sistema y generación SQL.
+- **Herencia TI** (nuevo en v2.1): Cadena completa de TI base via `M4RCH_TIS_INHERIT`. Cada entrada: `base_ti`, `level`. Incluida en `node.ti.ti_inheritance` cuando existe.
+- **Nodos sobreescritos** (nuevo en v2.1): Lista de overrides de `M4RCH_OVERWRITE_NO` en campo raíz `overwritten_nodes`. Cada entrada: `node`, `parent_t3`, `child_t3`, `ti`, `processed`.
 - **Items**: ID, tipo, M4 type, objetos y campos de lectura/escritura, visibilidad, PK, posición, nombre, tipo interno, tipo CS, método.
 - **Argumentos de métodos** (nuevos en v2): Para items de tipo Method, se incluyen automáticamente: ID argumento, posición, tipo M4, tipo de argumento (1=input, 2=output), flag is_output.
 - **Conceptos de nómina** (nuevos en v2): Para TIs que tengan conceptos en M4RCH_CONCEPTS: ID concepto, ID item asociado, tipo, scope, flag sistema.

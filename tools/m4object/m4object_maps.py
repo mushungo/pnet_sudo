@@ -105,6 +105,30 @@ NODES_TYPE_MAP = {
 }
 
 
+# --- Herencia de TI: ID_INHERIT_TYPE (M4RCH_TIS_INHERIT / M4RCH_LU_INHERITTP) ---
+# Define qué aspectos del comportamiento hereda una TI de su TI base.
+# Una TI puede heredar la lógica de carga (Load), grabación (Save) y/o navegación (Navigate)
+# de su TI base. El pool de items/métodos efectivo incluye los propios + los de la cadena base.
+TI_INHERIT_TYPE_MAP = {
+    0:  "No hereda",
+    1:  "Hereda carga",
+    2:  "Hereda grabación",
+    3:  "Hereda carga y grabación",
+    4:  "Hereda navegación",
+    5:  "Hereda carga y navegación",
+    6:  "Hereda grabación y navegación",
+    7:  "Hereda carga, grabación y navegación",
+    8:  "Hereda resto",
+    9:  "Hereda grabación y resto",
+    10: "Hereda grabación y resto",
+    11: "Hereda carga, grabación y resto",
+    12: "Hereda navegación y resto",
+    13: "Hereda carga, navegación y resto",
+    14: "Hereda grabación, navegación y resto",
+    15: "Hereda todo",
+}
+
+
 # --- Conectores: CONNECTION_TYPE (M4RCH_CONNECTORS) ---
 CONNECTION_TYPE_MAP = {
     1: "call",

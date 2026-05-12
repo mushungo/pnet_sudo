@@ -76,3 +76,12 @@ python -m tools.bdl.get_ramdl_object "ALERT"
   }
 }
 ```
+
+### Relación con Clases RAMDL
+
+Cada objeto RAMDL tiene un `ID_HEAD_OBJECT` que lo vincula a una **clase** en `M4RDC_CLASSES_PAR`. La clase define qué tablas físicas se transportan cuando se mueve ese objeto entre entornos.
+
+Por ejemplo, el objeto `NODE STRUCTURE` tiene `ID_HEAD_OBJECT = M4RCH_TIS`. Al transportarlo, RAMDL mueve registros de las ~52 tablas físicas que componen esa clase (ítems, reglas, totales, conceptos, alias, herencia, etc.).
+
+Para conocer exactamente qué tablas mueve cada clase o subclase, consultar:
+- **`skills/04_ramdl/clases_ramdl.md`** — referencia completa de clases, subclases y sus tablas físicas

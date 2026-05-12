@@ -3518,7 +3518,8 @@
           "arg_type": 1,
           "optional": false
         }
-      ]
+      ],
+      "fixed_args_at_end": 4
     },
     "ADDSORTFILTER": {
       "id": 188,
@@ -4002,7 +4003,8 @@
           "arg_type": 1,
           "optional": false
         }
-      ]
+      ],
+      "fixed_args_at_end": 3
     },
     "GETCURRENT": {
       "id": 201,
@@ -4830,7 +4832,8 @@
           "arg_type": 1,
           "optional": false
         }
-      ]
+      ],
+      "fixed_args_at_end": 2
     },
     "MIN": {
       "id": 226,

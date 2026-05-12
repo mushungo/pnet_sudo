@@ -541,6 +541,105 @@ def test_item_signature_str_mixed_variable_args():
 
 
 # =============================================================================
+# Tests de _build_builtin_signature_help — patrón args-first (ChannelCall, CALL)
+# =============================================================================
+
+def test_builtin_channelcall_signature_label():
+    """ChannelCall tiene firma con [Arg1, ...] seguido de los 3 identificadores fijos."""
+    catalog = get_catalog()
+    func = catalog.get_function("CHANNELCALL")
+    assert func is not None, "CHANNELCALL debe estar en el catálogo"
+    result = _build_builtin_signature_help(func, 0)
+    assert isinstance(result, types.SignatureHelp)
+    label = result.signatures[0].label
+    assert "[Arg1, ...]" in label, f"Esperado '[Arg1, ...]' en firma: {label}"
+    # Los 3 identificadores fijos deben aparecer en la firma
+    assert label.count(",") >= 3, f"Firma debe tener >= 3 comas: {label}"
+    return True
+
+
+def test_builtin_channelcall_slot0_on_first_arg():
+    """active_parameter=0 cuando el cursor está en el primer arg de ChannelCall."""
+    catalog = get_catalog()
+    func = catalog.get_function("CHANNELCALL")
+    result = _build_builtin_signature_help(func, 0)
+    assert result.active_parameter == 0, f"Esperado slot 0 (Arg1), got {result.active_parameter}"
+    return True
+
+
+def test_builtin_channelcall_slot0_on_second_method_arg():
+    """active_parameter sigue en 0 ('Arg1, ...') para el segundo arg del método (índice 1)."""
+    catalog = get_catalog()
+    func = catalog.get_function("CHANNELCALL")
+    # Con 3 args del método el usuario ha escrito 2 comas → active_param=2
+    # El JSON define 1 var_arg + 3 fijos → var_defined=1
+    # active_param=2 → offset_in_fixed = 2-1 = 1 → slot 2 (segundo fijo: Node)
+    # Pero con active_param=0 y 1 deben quedarse en slot 0 (zona variable)
+    result_0 = _build_builtin_signature_help(func, 0)
+    assert result_0.active_parameter == 0
+    return True
+
+
+def test_builtin_channelcall_fixed_slots():
+    """Los identificadores fijos (M4Object, Node, Item) se resaltan correctamente."""
+    catalog = get_catalog()
+    func = catalog.get_function("CHANNELCALL")
+    fixed_count = func.get("fixed_args_at_end", 0)
+    assert fixed_count == 3, f"CHANNELCALL debe tener 3 args fijos, got {fixed_count}"
+
+    var_defined = len(func.get("arguments", [])) - fixed_count  # normalmente 1
+
+    # Primer fijo: active_param = var_defined + 0
+    r1 = _build_builtin_signature_help(func, var_defined)
+    assert r1.active_parameter == 1, f"Primer fijo debe ser slot 1, got {r1.active_parameter}"
+
+    # Segundo fijo: active_param = var_defined + 1
+    r2 = _build_builtin_signature_help(func, var_defined + 1)
+    assert r2.active_parameter == 2
+
+    # Tercer fijo: active_param = var_defined + 2
+    r3 = _build_builtin_signature_help(func, var_defined + 2)
+    assert r3.active_parameter == 3
+    return True
+
+
+def test_builtin_call_signature_label():
+    """CALL (2 args fijos: Node, Item) tiene firma args-first correcta."""
+    catalog = get_catalog()
+    func = catalog.get_function("CALL")
+    assert func is not None, "CALL debe estar en el catálogo"
+    result = _build_builtin_signature_help(func, 0)
+    label = result.signatures[0].label
+    assert "[Arg1, ...]" in label, f"Esperado '[Arg1, ...]' en firma CALL: {label}"
+    fixed_count = func.get("fixed_args_at_end", 0)
+    assert fixed_count == 2, f"CALL debe tener 2 args fijos"
+    return True
+
+
+def test_builtin_channelcall_doc_contains_note():
+    """La documentación de ChannelCall incluye la nota sobre patrón args-first."""
+    catalog = get_catalog()
+    func = catalog.get_function("CHANNELCALL")
+    result = _build_builtin_signature_help(func, 0)
+    sig = result.signatures[0]
+    assert sig.documentation is not None, "Debe haber documentación"
+    assert "args-first" in sig.documentation.value or "Arg" in sig.documentation.value
+    return True
+
+
+def test_builtin_channelcall_with_3_method_args_stays_slot0():
+    """Con 3 args de método (comas 0,1,2) active_param permanece en slot 0."""
+    catalog = get_catalog()
+    func = catalog.get_function("CHANNELCALL")
+    var_defined = len(func.get("arguments", [])) - func.get("fixed_args_at_end", 0)
+    # Los índices 0 .. var_defined-1 deben quedar en slot 0
+    for ap in range(var_defined):
+        r = _build_builtin_signature_help(func, ap)
+        assert r.active_parameter == 0, f"active_param={ap} debe ser slot 0, got {r.active_parameter}"
+    return True
+
+
+# =============================================================================
 # Main
 # =============================================================================
 def main():
@@ -603,6 +702,15 @@ def main():
         ("Item hover mixto + variadic", test_item_hover_markdown_mixed_args_and_varargs),
         ("Item sig str variadic", test_item_signature_str_variable_args),
         ("Item sig str mixto variadic", test_item_signature_str_mixed_variable_args),
+
+        # args-first (ChannelCall, CALL)
+        ("ChannelCall firma label", test_builtin_channelcall_signature_label),
+        ("ChannelCall slot 0 en primer arg", test_builtin_channelcall_slot0_on_first_arg),
+        ("ChannelCall slot 0 en segundo arg método", test_builtin_channelcall_slot0_on_second_method_arg),
+        ("ChannelCall slots fijos correctos", test_builtin_channelcall_fixed_slots),
+        ("CALL firma args-first", test_builtin_call_signature_label),
+        ("ChannelCall doc incluye nota args-first", test_builtin_channelcall_doc_contains_note),
+        ("ChannelCall 3 method args permanece slot 0", test_builtin_channelcall_with_3_method_args_stays_slot0),
     ]
 
     for name, test_fn in tests:

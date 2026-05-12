@@ -18,6 +18,8 @@ Lista todos los objetos RAMDL del repositorio. RAMDL (Repository Administration 
 ### Nota Organizacional
 > La herramienta reside en `tools/bdl/` porque los objetos RAMDL se almacenan en tablas de la capa BDL (`M4RDC_RAMDL_OBJECTS`, `M4RDC_RAMDL_VER`). La skill se organiza bajo `04_ramdl/` por afinidad de dominio.
 
+> Los 199 objetos RAMDL pertenecen a **clases** que definen exactamente qué tablas físicas se mueven en cada transporte. Para entender qué implica transportar cada tipo de objeto (NODE STRUCTURE, ITEM, META4OBJECT, BUSINESS PROCESS, etc.), consultar **`skills/04_ramdl/clases_ramdl.md`**.
+
 ### Flujo de Trabajo
 1. **Conexión a la BD**: Se conecta usando las credenciales del entorno.
 2. **Consulta agrupada**: Ejecuta un SELECT sobre `M4RDC_RAMDL_OBJECTS` agrupando versiones por objeto.

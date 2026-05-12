@@ -1,6 +1,4 @@
 @echo off
-title Opencode - Contexto PeopleNet
-REM Cambia el directorio a la carpeta raíz del proyecto (donde está este script).
 cd /d "%~dp0"
 
 echo Directorio cambiado a:
@@ -18,10 +16,33 @@ if %ERRORLEVEL% equ 0 (
     start /B "" engram serve >nul 2>&1
     echo Engram iniciado en segundo plano.
 ) else (
-    echo [AVISO] engram.exe no encontrado en PATH. La memoria persistente no estará disponible.
+    echo [AVISO] engram.exe no encontrado en PATH. La memoria persistente no estara disponible.
     echo         Descarga Engram desde: https://github.com/Gentleman-Programming/engram
 )
 echo.
+
+REM ── Selector de proyecto ────────────────────────────────────────────────────
+echo Selecciona el proyecto a investigar:
+echo   [1] CAF    ^(SQL Server^)
+echo   [2] AAPP   ^(Oracle - GOTHAM:1944/ORA6^)
+echo   [intro] sin proyecto ^(usa .env raiz^)
+echo.
+set /p PROYECTO_OPCION="Opcion: "
+
+if "%PROYECTO_OPCION%"=="1" (
+    set PNET_PROJECT=caf
+    echo Proyecto: CAF ^(SQL Server^)
+) else if "%PROYECTO_OPCION%"=="2" (
+    set PNET_PROJECT=aapp
+    echo Proyecto: AAPP ^(Oracle - GOTHAM^)
+) else (
+    set PNET_PROJECT=
+    echo Sin proyecto seleccionado, usando .env raiz.
+)
+echo --------------------------------------------------
+echo.
+
+title Opencode - PeopleNet [%PNET_PROJECT%]
 
 echo Ejecutando 'opencode' con los parametros proporcionados...
 echo recuerda. Comando para la carga del contexto:
@@ -35,4 +56,4 @@ call code .
 REM Ejecuta opencode y le pasa todos los argumentos que se pasaron a este script (%*).
 opencode %*
 
-echo hechos salido de opencode
+echo hemos salido de opencode

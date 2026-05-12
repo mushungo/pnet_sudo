@@ -6,15 +6,25 @@ Consulta las tablas de metadatos M4RCH_* para extraer la estructura
 jerárquica de un m4object:
 
     T3 (canal)
-    ├─ Herencia (T3_INHERIT)
-    ├─ Conectores (T3_CONNTORS)
-    └─ Nodos (NODES)
+    ├─ Herencia T3 (M4RCH_T3_INHERIT)       — cadena de T3 base por nivel
+    ├─ Conectores T3 (M4RCH_T3_CONNTORS)    — llamadas a T3 externos
+    ├─ Nodos sobreescritos (M4RCH_OVERWRITE_NO) — overrides de nodos heredados
+    └─ Nodos (M4RCH_NODES)
          └─ TI (Technical Instance)
-              ├─ Items (campos/métodos)
-              │    └─ Argumentos de métodos (ITEM_ARGS) — siempre incluidos
-              ├─ Conceptos (CONCEPTS) — siempre incluidos
-              └─ Reglas (RULES)
-                   └─ Código fuente LN4 (RULES3) — con --include-rules
+              ├─ Herencia TI (M4RCH_TIS_INHERIT) — cadena de TI base (pool de métodos)
+              ├─ Items propios (M4RCH_ITEMS)
+              │    └─ Argumentos de métodos (M4RCH_ITEM_ARGS) — siempre incluidos
+              ├─ Conceptos (M4RCH_CONCEPTS) — siempre incluidos
+              └─ Reglas (M4RCH_RULES)
+                   └─ Código fuente LN4 (M4RCH_RULES3) — con --include-rules
+
+Notas sobre herencia:
+- M4RCH_T3_INHERIT: un T3 hereda nodos/conectores de T3 base (herencia de canal).
+- M4RCH_TIS_INHERIT: una TI hereda items/métodos de TI base (herencia de instancia
+  técnica). Los métodos del "pool de funciones" (ej: ZOOM, PVT_APPLY_ZOOM) no
+  aparecen en M4RCH_ITEMS del TI concreto sino en sus TI base (templates).
+- M4RCH_OVERWRITE_NO: registra qué nodos heredados de T3 padre han sido sustituidos
+  por TIs propias en el T3 hijo. Permite saber qué TI efectiva resuelve cada slot.
 
 Uso:
     python -m tools.m4object.get_m4object "ABC"
@@ -31,7 +41,8 @@ if project_root not in sys.path:
 
 from tools.general.db_utils import db_connection
 from tools.m4object.m4object_maps import (
-    EXE_TYPE_MAP, STREAM_TYPE_MAP, ITEM_CSTYPE_MAP, NODES_TYPE_MAP, decode,
+    EXE_TYPE_MAP, STREAM_TYPE_MAP, ITEM_CSTYPE_MAP, NODES_TYPE_MAP,
+    TI_INHERIT_TYPE_MAP, decode,
 )
 
 
@@ -394,6 +405,56 @@ def _fetch_concepts_for_tis(cursor, ti_ids):
     return concepts_by_ti
 
 
+def _fetch_ti_inheritance(cursor, ti_ids):
+    """Obtiene la cadena de herencia de TI para un conjunto de TIs (M4RCH_TIS_INHERIT).
+
+    Permite trazar el "pool de funciones" (métodos como ZOOM, PVT_APPLY_ZOOM, etc.)
+    que no aparecen en M4RCH_ITEMS del TI concreto sino en sus TI base (templates).
+
+    Devuelve un dict {id_ti: [{"base_ti": ..., "level": ...}]}.
+    """
+    if not ti_ids:
+        return {}
+
+    placeholders = ",".join(["?"] * len(ti_ids))
+    cursor.execute(f"""
+        SELECT ID_TI, ID_TI_BASE, ID_LEVEL
+        FROM M4RCH_TIS_INHERIT
+        WHERE ID_TI IN ({placeholders})
+        ORDER BY ID_TI, ID_LEVEL
+    """, *ti_ids)
+    rows = cursor.fetchall()
+
+    result = {}
+    for r in rows:
+        result.setdefault(r.ID_TI, []).append({"base_ti": r.ID_TI_BASE, "level": r.ID_LEVEL})
+    return result
+
+
+def _fetch_overwritten_nodes(cursor, id_t3):
+    """Obtiene los nodos heredados que han sido sobreescritos en el T3 (M4RCH_OVERWRITE_NO).
+
+    Registra qué nodos del T3 padre han sido sustituidos por TIs propias en el T3 hijo,
+    permitiendo resolver qué TI efectiva corresponde a cada slot heredado.
+
+    Devuelve una lista de dicts con los overrides del T3.
+    """
+    cursor.execute("""
+        SELECT ID_NODE, ID_T3, ID_NODE_T3, ID_TI, HAS_BEEN_PROCESSED
+        FROM M4RCH_OVERWRITE_NO
+        WHERE ID_T3 = ?
+        ORDER BY ID_NODE
+    """, id_t3)
+    rows = cursor.fetchall()
+    return [{
+        "node": r.ID_NODE,
+        "parent_t3": r.ID_T3,
+        "child_t3": r.ID_NODE_T3,
+        "ti": r.ID_TI,
+        "processed": bool(r.HAS_BEEN_PROCESSED) if r.HAS_BEEN_PROCESSED is not None else None,
+    } for r in rows]
+
+
 def get_m4object_details(id_t3, include_rules=False):
     """Obtiene los detalles completos de un m4object a partir de su ID_T3.
 
@@ -441,7 +502,13 @@ def get_m4object_details(id_t3, include_rules=False):
             # 8) Conceptos de nómina (siempre)
             concepts_by_ti = _fetch_concepts_for_tis(cursor, ti_ids)
 
-            # 9) Reglas (conteo siempre, detalle + fuente si se pide)
+            # 9) Herencia de TI (pool de métodos/funciones de cada TI)
+            ti_inheritance = _fetch_ti_inheritance(cursor, ti_ids)
+
+            # 10) Nodos sobreescritos (overrides heredados del T3 padre)
+            overwritten_nodes = _fetch_overwritten_nodes(cursor, id_t3)
+
+            # 11) Reglas (conteo siempre, detalle + fuente si se pide)
             rules_count = _fetch_rules_count_for_tis(cursor, ti_ids)
             rules_detail = {}
             rules_source = {}
@@ -462,6 +529,11 @@ def get_m4object_details(id_t3, include_rules=False):
                             if args:
                                 item["arguments"] = args
                     node["ti"]["items"] = ti_items
+
+                    # Herencia TI (pool de métodos/funciones en TI base)
+                    ti_inherit_chain = ti_inheritance.get(ti_id, [])
+                    if ti_inherit_chain:
+                        node["ti"]["ti_inheritance"] = ti_inherit_chain
 
                     # Conceptos
                     ti_concepts = concepts_by_ti.get(ti_id, [])
@@ -500,6 +572,8 @@ def get_m4object_details(id_t3, include_rules=False):
                 result["inheritance"] = inheritance
             if connectors:
                 result["connectors"] = connectors
+            if overwritten_nodes:
+                result["overwritten_nodes"] = overwritten_nodes
 
             return result
 

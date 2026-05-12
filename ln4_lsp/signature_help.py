@@ -120,6 +120,101 @@ def _find_active_call(text_before_cursor):
 # Construcción de SignatureHelp para built-in functions
 # =============================================================================
 
+def _build_args_first_signature(func):
+    """Construye la firma para funciones con patrón args-first.
+
+    En estas funciones los argumentos del método invocado van ANTES de los
+    identificadores fijos (M4Object/Node/Item). Ejemplo:
+        ChannelCall([Arg1, Arg2, ...], M4Object, Node, Item)
+
+    Args:
+        func: Dict de la función del catálogo.
+
+    Returns:
+        Tupla (sig_label, parameters) donde parameters es lista de
+        ParameterInformation con un slot "method args" al inicio.
+    """
+    name = func.get("name", "?")
+    args = func.get("arguments", [])
+    fixed_count = func.get("fixed_args_at_end", 0)
+
+    # Separar args variables (inicio) de args fijos (final)
+    # El JSON define: [Argument1 (optional), fixed1, fixed2, ...]
+    # Los args fijos son los últimos `fixed_count` de la lista
+    var_args_defined = args[:-fixed_count] if fixed_count else args
+    fixed_args = args[-fixed_count:] if fixed_count else []
+
+    # Construir label de la firma: Name([Arg1, ...], Fixed1, Fixed2, ...)
+    fixed_strs = [_format_arg(a) for a in fixed_args]
+    sig_label = f"{name}([Arg1, ...], {', '.join(fixed_strs)})"
+
+    # Construir ParameterInformation
+    parameters = []
+
+    # Slot único para todos los args del método invocado
+    parameters.append(
+        types.ParameterInformation(
+            label="Arg1, ...",
+            documentation="Argumentos del método invocado (0 o más, van primero)",
+        )
+    )
+
+    # Slots fijos al final
+    for arg in fixed_args:
+        arg_doc = "(output / by-ref)" if arg.get("arg_type") == 2 else ""
+        parameters.append(
+            types.ParameterInformation(
+                label=arg.get("name", "?"),
+                documentation=arg_doc if arg_doc else None,
+            )
+        )
+
+    return sig_label, parameters
+
+
+def _resolve_args_first_active_param(func, active_param):
+    """Calcula el índice de parámetro resaltado para funciones args-first.
+
+    Para ChannelCall(A1, A2, A3, M4Object, Node, Item):
+      - Los primeros N args son del método invocado → resaltar slot 0 ("Arg1, ...")
+      - Los últimos fixed_count args son los identificadores fijos → resaltar 1..fixed
+
+    La dificultad es que no sabemos cuántos args de método tiene el usuario.
+    Usamos una heurística conservadora: si active_param es mayor o igual que
+    el número de args variables declarados en el JSON (normalmente 1), lo
+    tratamos como variable hasta que llegamos a los fijos desde el final.
+    El usuario puede ver en la firma cuántos fijos hay al final.
+
+    Args:
+        func: Dict de la función.
+        active_param: Número de comas vistas (0-based).
+
+    Returns:
+        Índice ajustado para resaltar en `parameters`.
+    """
+    fixed_count = func.get("fixed_args_at_end", 0)
+    args = func.get("arguments", [])
+
+    # Los args definidos en el JSON son: [var_args..., fixed_args...]
+    # Número de var_args definidos en JSON (normalmente 1: "Argument1")
+    var_defined = len(args) - fixed_count  # suele ser 1
+
+    # Si active_param < var_defined: claramente en zona variable → slot 0
+    # Si active_param >= var_defined: puede ser variable adicional o fijo
+    # Heurística: el usuario está en un fijo cuando active_param >= var_defined
+    # y (active_param - var_defined) < fixed_count, mapeando al fijo correcto.
+    # Para active_param en zona ambigua (varios args de método), mantenemos slot 0.
+    if active_param < var_defined:
+        return 0  # slot "Arg1, ..."
+
+    offset_in_fixed = active_param - var_defined
+    if offset_in_fixed < fixed_count:
+        return 1 + offset_in_fixed  # 1=primer fijo, 2=segundo fijo, ...
+
+    # Más allá del último fijo → clamp al último
+    return len(args) - fixed_count  # último slot = fixed_count
+
+
 def _build_builtin_signature_help(func, active_param):
     """Construye SignatureHelp para una función built-in del catálogo.
 
@@ -130,40 +225,46 @@ def _build_builtin_signature_help(func, active_param):
     Returns:
         types.SignatureHelp
     """
-    sig_label = _build_signature(func)
     args = func.get("arguments", [])
     comment = func.get("comment", "")
+    fixed_at_end = func.get("fixed_args_at_end", 0)
 
-    # Construir ParameterInformation para cada argumento
-    parameters = []
-    for arg in args:
-        arg_label = _format_arg(arg)
-        arg_doc = ""
-        arg_type_id = arg.get("arg_type")
-        if arg_type_id == 2:
-            arg_doc = "(output / by-ref)"
-        parameters.append(
-            types.ParameterInformation(
-                label=arg.get("name", "?"),
-                documentation=arg_doc if arg_doc else None,
+    # Funciones con patrón args-first: construir firma y active_param especiales
+    if fixed_at_end > 0:
+        sig_label, parameters = _build_args_first_signature(func)
+        active_param = _resolve_args_first_active_param(func, active_param)
+    else:
+        sig_label = _build_signature(func)
+
+        # Construir ParameterInformation para cada argumento
+        parameters = []
+        for arg in args:
+            arg_doc = ""
+            arg_type_id = arg.get("arg_type")
+            if arg_type_id == 2:
+                arg_doc = "(output / by-ref)"
+            parameters.append(
+                types.ParameterInformation(
+                    label=arg.get("name", "?"),
+                    documentation=arg_doc if arg_doc else None,
+                )
             )
-        )
 
-    # Si tiene argumentos variables, agregar un parámetro "..."
-    if func.get("variable_arguments"):
-        parameters.append(
-            types.ParameterInformation(
-                label="...",
-                documentation="Argumentos variables",
+        # Si tiene argumentos variables, agregar un parámetro "..."
+        if func.get("variable_arguments"):
+            parameters.append(
+                types.ParameterInformation(
+                    label="...",
+                    documentation="Argumentos variables",
+                )
             )
-        )
 
-    # Clamp active_param al rango válido
-    if parameters:
-        if func.get("variable_arguments") and active_param >= len(parameters) - 1:
-            active_param = len(parameters) - 1
-        else:
-            active_param = min(active_param, len(parameters) - 1)
+        # Clamp active_param al rango válido
+        if parameters:
+            if func.get("variable_arguments") and active_param >= len(parameters) - 1:
+                active_param = len(parameters) - 1
+            else:
+                active_param = min(active_param, len(parameters) - 1)
 
     # Limpiar comment
     doc = ""
@@ -172,6 +273,15 @@ def _build_builtin_signature_help(func, active_param):
     group_name = func.get("group_name", "")
     if group_name:
         doc = f"**{group_name}**\n\n{doc}" if doc else f"**{group_name}**"
+
+    # Nota adicional para funciones args-first
+    if fixed_at_end > 0:
+        note = (
+            f"\n\n> **Patrón args-first**: los argumentos del método invocado "
+            f"van ANTES de los identificadores fijos "
+            f"({', '.join(a['name'] for a in args[-fixed_at_end:])})."
+        )
+        doc = (doc + note) if doc else note.strip()
 
     sig_info = types.SignatureInformation(
         label=sig_label,
